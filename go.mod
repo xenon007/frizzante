@@ -1,3 +1,3 @@
-module procedural_web_server
+module frizzante
 
 go 1.22

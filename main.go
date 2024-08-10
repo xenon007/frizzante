@@ -1,10 +1,10 @@
 package main
 
 func main() {
-	s := server_create(8080)
-	r := router_create(s)
-	router_map(
-		r, "GET", "/", func(request *request, response *response) error {
+	server := serverCreate(8080)
+
+	serverOnRequest(
+		server, "GET", "/", func(request *Request, response *Response) error {
 			println("Request received.")
 			err := echo(response, "hello world")
 			if err != nil {
@@ -13,8 +13,5 @@ func main() {
 			return nil
 		},
 	)
-	err := server_start(s)
-	if err != nil {
-		println(err)
-	}
+	_ = serverStart(server)
 }
