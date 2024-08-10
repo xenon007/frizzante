@@ -5,11 +5,8 @@ func main() {
 
 	serverOnRequest(
 		server, "GET", "/", func(request *Request, response *Response) error {
-			println("Request received.")
-			err := echo(response, "hello world")
-			if err != nil {
-				return err
-			}
+			_ = header(response, "content-type", "text/plain")
+			_ = echo(response, "hello world")
 			return nil
 		},
 	)

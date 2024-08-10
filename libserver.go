@@ -5,23 +5,27 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 )
 
 type Server struct {
-	listenersRequestsErrors []func(error)
-	listenersRequests       []func(*Request, *Response) error
-	sessions                map[string]*net.Conn
-	port                    int
-	buffer                  []byte
+	serverErrorHandlers         []func(error)
+	serverRequestErrorHandlers  []func(*Request, error)
+	serverResponseErrorHandlers []func(*Request, *Response, error)
+	serverResponseHandlers      []func(*Request, *Response) error
+	sessions                    map[string]*net.Conn
+	port                        int
+	buffer                      []byte
 }
 
 // Create a Server.
 func serverCreate(port int) *Server {
 	return &Server{
-		listenersRequestsErrors: []func(error){},
-		listenersRequests:       []func(*Request, *Response) error{},
-		port:                    port,
-		buffer:                  make([]byte, 1024),
+		serverErrorHandlers:        []func(error){},
+		serverRequestErrorHandlers: []func(*Request, error){},
+		serverResponseHandlers:     []func(*Request, *Response) error{},
+		port:                       port,
+		buffer:                     make([]byte, 1024),
 	}
 }
 
@@ -38,65 +42,154 @@ func serverStart(self *Server) error {
 		if err != nil {
 			return err
 		}
-		serverHandleClientSocket(self, con)
+		serverRespond(self, con)
 	}
 }
 
 // Handle incoming client socket.
-func serverHandleClientSocket(self *Server, s net.Conn) {
-	req := Request{
-		socket:  s,
+func serverRespond(self *Server, socket net.Conn) {
+	// Create the request.
+	request := &Request{
+		socket:  socket,
 		headers: &Headers{},
 		method:  "",
 		path:    "",
 		version: "",
 	}
 
-	// Order matters.
-	// #####################################################################
-	m, merror := requestNextSection(&req)
-	if merror != nil {
-		serverNotifyError(self, merror)
-		_ = s.Close()
+	// Find method.
+	method, eol, methodError := requestFindNextWord(request)
+	if methodError != nil {
+		serverNotifyError(self, methodError)
+		_ = socket.Close()
 		return
 	}
-	p, perror := requestNextSection(&req)
-	if perror != nil {
-		serverNotifyError(self, perror)
-		_ = s.Close()
-		return
-	}
-	v, verror := requestNextSection(&req)
-	if verror != nil {
-		serverNotifyError(self, verror)
-		_ = s.Close()
-		return
-	}
-	h, herror := requestFindHeaders(&req)
-	if herror != nil {
-		serverNotifyError(self, herror)
-		_ = s.Close()
-		return
-	}
-	// #####################################################################
 
-	requestWithMethod(&req, string(m))
-	requestWithPath(&req, string(p))
-	requestWithVersion(&req, string(v))
-	requestWithHeaders(&req, h)
+	// Make sure eol is not reached.
+	if eol {
+		serverNotifyRequestError(
+			self, request, errors.New("request line must provide the method, path and protocol version before feeding a new line"),
+		)
+		_ = socket.Close()
+		return
+	}
+
+	// Find path.
+	path, eol, pathError := requestFindNextWord(request)
+	if pathError != nil {
+		serverNotifyError(self, pathError)
+		_ = socket.Close()
+		return
+	}
+
+	// Make sure eol is not reached.
+	if eol {
+		serverNotifyRequestError(
+			self, request, errors.New("request line must provide a method, a path and the protocol version before feeding a new line"),
+		)
+		_ = socket.Close()
+		return
+	}
+
+	// Find protocol.
+	protocol, eol, protocolError := requestFindNextWord(request)
+	if protocolError != nil {
+		serverNotifyError(self, protocolError)
+		_ = socket.Close()
+		return
+	}
+
+	valueRawLength := len(protocol)
+	if valueRawLength > 0 && cr == protocol[valueRawLength-1] {
+		protocol = protocol[:valueRawLength-1]
+	}
+
+	// Make sure eol is reached.
+	if !eol {
+		serverNotifyRequestError(
+			self, request, errors.New("request line must feed a new line after providing the method, path and protocol version"),
+		)
+		_ = socket.Close()
+		return
+	}
+
+	// Find headers.
+	headers := Headers{}
+	for {
+		key, eol, keyError := requestFindNextWord(request)
+		if keyError != nil {
+			serverNotifyError(self, keyError)
+			_ = socket.Close()
+			return
+		}
+
+		keyLength := len(key)
+
+		// Check if eol is reached.
+		if eol {
+			// Check if it's the end of the headers section.
+			if 0 == keyLength || (1 == keyLength && cr == key[0]) {
+				// Happy path, we're done reading the headers, keep going.
+				break
+			}
+
+			// Sad path, we just received a header key without a value.
+			serverNotifyRequestError(
+				self, request, errors.New("header lines must provide a key and a value before feeding a new line"),
+			)
+			_ = socket.Close()
+			return
+		}
+
+		// Make sure the key name ends with a semicolon.
+		if colon != key[keyLength-1] {
+			keySyntaxError := errors.New("header field keys and values must be separated by `: ` (semicolon and one blank space)")
+			serverNotifyRequestError(self, request, keySyntaxError)
+			_ = socket.Close()
+			return
+		}
+
+		// Strip the semicolon.
+		keyStringified := strings.ToLower(string(key[:keyLength-1]))
+
+		value, valueError := requestFindNextLine(request)
+		if valueError != nil {
+			return
+		}
+
+		// Strip \r from the end of the string.
+		valueLength := len(value)
+		if valueLength > 0 && cr == value[valueLength-1] {
+			value = value[:valueLength-1]
+		}
+
+		headers[keyStringified] = string(value)
+	}
+
+	requestWithMethod(request, string(method))
+	requestWithPath(request, string(path))
+	requestWithProtocol(request, string(protocol))
+	requestWithHeaders(request, &headers)
 
 	resp := Response{
-		socket:        s,
-		version:       string(v),
+		socket:        socket,
+		version:       string(protocol),
 		lockedStatus:  false,
 		lockedHeaders: false,
 	}
 
-	err := serverNotifyRequest(self, &req, &resp)
-	if err != nil {
-		serverNotifyError(self, err)
+	serverNotifyRequest(self, request, &resp)
+	_ = socket.Close()
+}
+
+// Notify all listeners that a request has been received.
+func serverNotifyRequest(self *Server, request *Request, response *Response) {
+	for _, listener := range self.serverResponseHandlers {
+		responseError := listener(request, response)
+		if responseError != nil {
+			serverNotifyResponseError(self, request, response, responseError)
+		}
 	}
-	_ = s.Close()
 }
 
 // Register a callback to execute
@@ -107,8 +200,8 @@ func serverOnRequest(
 	path string,
 	callback func(*Request, *Response) error,
 ) {
-	self.listenersRequests = append(
-		self.listenersRequests, func(request *Request, response *Response) error {
+	self.serverResponseHandlers = append(
+		self.serverResponseHandlers, func(request *Request, response *Response) error {
 			if method == request.method && path == request.path {
 				err := callback(request, response)
 				if err != nil {
@@ -120,25 +213,40 @@ func serverOnRequest(
 	)
 }
 
-// Collect errors generated by your Request listeners.
+// Notify all listeners of a server error.
+func serverNotifyError(self *Server, error error) {
+	for _, listener := range self.serverErrorHandlers {
+		listener(error)
+	}
+}
+
+// Collect server errors.
 func serverOnError(self *Server, callback func(error)) {
-	self.listenersRequestsErrors = append(self.listenersRequestsErrors, callback)
+	self.serverErrorHandlers = append(self.serverErrorHandlers, callback)
 }
 
-func serverNotifyError(self *Server, err error) {
-	for _, listener := range self.listenersRequestsErrors {
-		listener(err)
+// Notify all listeners of a request error.
+func serverNotifyRequestError(self *Server, request *Request, error error) {
+	for _, listener := range self.serverRequestErrorHandlers {
+		listener(request, error)
 	}
 }
 
-func serverNotifyRequest(self *Server, req *Request, res *Response) error {
-	for _, listener := range self.listenersRequests {
-		err := listener(req, res)
-		if err != nil {
-			return err
-		}
+// Collect request errors.
+func serverOnRequestError(self *Server, callback func(*Request, error)) {
+	self.serverRequestErrorHandlers = append(self.serverRequestErrorHandlers, callback)
+}
+
+// Notify all listeners of a request error.
+func serverNotifyResponseError(self *Server, request *Request, response *Response, error error) {
+	for _, listener := range self.serverResponseErrorHandlers {
+		listener(request, response, error)
 	}
-	return nil
+}
+
+// Collect request errors.
+func serverOnResponseError(self *Server, callback func(*Request, *Response, error)) {
+	self.serverResponseErrorHandlers = append(self.serverResponseErrorHandlers, callback)
 }
 
 type Headers map[string]string
@@ -151,7 +259,40 @@ type Request struct {
 	headers *Headers
 }
 
-func requestNextLine(self *Request) ([]byte, error) {
+// Find the next word in a request.
+// This is useful when parsing headers in requests.
+//
+// A "word" is intended as any sequence of characters
+// that doesn't contain blank spaces.
+//
+// This function will return the word (in bytes), a boolean indicating
+// whether the word ended because of a new line and finally an error if found.
+func requestFindNextWord(self *Request) ([]byte, bool, error) {
+	reader := make([]byte, 1)
+	var characters []byte
+	read, readError := self.socket.Read(reader)
+	if readError != nil {
+		return nil, false, readError
+	}
+
+	for read > 0 {
+		if space == reader[0] {
+			return characters, false, nil
+		} else if lf == reader[0] {
+			return characters, true, nil
+		}
+
+		characters = append(characters, reader[0])
+
+		read, readError = self.socket.Read(reader)
+		if readError != nil {
+			return nil, false, readError
+		}
+	}
+	return characters, false, nil
+}
+
+func requestFindNextLine(self *Request) ([]byte, error) {
 	var characters []byte
 	reader := make([]byte, 1)
 	read, readError := self.socket.Read(reader)
@@ -172,88 +313,6 @@ func requestNextLine(self *Request) ([]byte, error) {
 		}
 	}
 	return characters, nil
-}
-
-func requestNextSection(self *Request) ([]byte, error) {
-	reader := make([]byte, 1)
-	var characters []byte
-	var utf8 = ""
-	read, readError := self.socket.Read(reader)
-	if readError != nil {
-		return nil, readError
-	}
-
-	for read > 0 {
-		if space == reader[0] || eol == reader[0] {
-			index := len(characters) - 1
-			if characters[index] == cr {
-				return characters[:index], nil
-			}
-			return characters, nil
-		}
-
-		characters = append(characters, reader[0])
-		utf8 = string(characters)
-		println(utf8)
-
-		read, readError = self.socket.Read(reader)
-		if readError != nil {
-			return nil, readError
-		}
-	}
-	return characters, nil
-}
-
-func requestFindHeaders(self *Request) (*Headers, error) {
-	var key string
-	var chunk []byte
-	reader := make([]byte, 1)
-	headers := make(Headers)
-	keyed := false
-	eols := 0
-	read, readError := self.socket.Read(reader)
-	if readError != nil {
-		return nil, readError
-	}
-
-	for read > 0 {
-		if eol == reader[0] {
-			eols++
-			clen := len(chunk)
-			if cr == chunk[clen-1] {
-				chunk = chunk[:clen-1]
-			}
-			headers[key] = string(chunk)
-			if 2 == eols {
-				return &headers, nil
-			}
-
-			chunk = []byte{}
-			keyed = false
-		} else if colon == reader[0] && !keyed {
-			key = string(chunk)
-			chunk = []byte{}
-			keyed = true
-
-			read, readError = self.socket.Read(reader)
-			if readError != nil {
-				return nil, readError
-			}
-
-			if space != reader[0] {
-				return nil, errors.New("Invalid header definition. Expecting blank space after `" + key + ":`, received `" + string(reader[0]) + "` instead.")
-			}
-		} else {
-			chunk = append(chunk, reader[0])
-		}
-
-		read, readError = self.socket.Read(reader)
-		if readError != nil {
-			return nil, readError
-		}
-	}
-
-	return &headers, nil
 }
 
 func requestWithMethod(self *Request, method string) {
@@ -264,7 +323,7 @@ func requestWithPath(self *Request, path string) {
 	self.path = path
 }
 
-func requestWithVersion(self *Request, version string) {
+func requestWithProtocol(self *Request, version string) {
 	self.version = version
 }
 
@@ -460,9 +519,9 @@ func header(self *Response, key string, value string) error {
 // Send binary safe content.
 //
 // If the status has not been sent already, it will be sent automatically as "200 OK".
-// This means the status will become locked, meaning you cannot set it again.
+// This means the status will become locked, meaning you can no longer set it after invoking this function.
 //
-// Headers will be automatically locked, meaning you can no longer set Headers after invoking this function.
+// Headers will also be automatically locked.
 func send(self *Response, value []byte) error {
 	if !self.lockedStatus {
 		err := status(self, 200, "OK")
@@ -490,9 +549,9 @@ func send(self *Response, value []byte) error {
 // Send utf8 content.
 //
 // If the status has not been sent already, it will be sent automatically as "200 OK".
-// This means the status will become locked, meaning you cannot set it again.
+// This means the status will become locked, meaning you can no longer set it after invoking this function.
 //
-// Headers will be automatically locked, meaning you can no longer set Headers after invoking this function.
+// Headers will also be automatically locked.
 func echo(self *Response, value string) error {
 	return send(self, []byte(value))
 }
