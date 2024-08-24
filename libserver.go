@@ -3,99 +3,103 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 )
 
 type Server struct {
-	serverErrorHandlers         []func(error)
-	serverRequestErrorHandlers  []func(*Request, error)
-	serverResponseErrorHandlers []func(*Request, *Response, error)
-	serverResponseHandlers      []func(*Request, *Response) error
-	sessions                    map[string]*net.Conn
-	port                        int
-	buffer                      []byte
+	ServerErrorHandlers         []func(error)
+	ServerRequestErrorHandlers  []func(*Request, error)
+	ServerResponseErrorHandlers []func(*Request, *Response, error)
+	ServerResponseHandlers      []func(*Request, *Response)
+	Sessions                    *map[string]*net.Conn
+	Port                        int
+	Buffer                      []byte
 }
 
-// Create a Server.
-func serverCreate(port int) *Server {
+// Create a server.
+func ServerCreate(port int) *Server {
 	return &Server{
-		serverErrorHandlers:        []func(error){},
-		serverRequestErrorHandlers: []func(*Request, error){},
-		serverResponseHandlers:     []func(*Request, *Response) error{},
-		port:                       port,
-		buffer:                     make([]byte, 1024),
+		ServerErrorHandlers:        []func(error){},
+		ServerRequestErrorHandlers: []func(*Request, error){},
+		ServerResponseHandlers:     []func(*Request, *Response){},
+		Port:                       port,
+		Buffer:                     make([]byte, 1024),
 	}
 }
 
-// Start the Server.
-func serverStart(self *Server) error {
-	lis, err := net.Listen("tcp4", ":"+strconv.Itoa(self.port))
-	if err != nil {
-		return err
+// Start the server.
+func ServerStart(self *Server) error {
+	listener, listenError := net.Listen("tcp4", ":"+strconv.Itoa(self.Port))
+	if listenError != nil {
+		return listenError
 	}
 
-	defer func(listener net.Listener) { _ = listener.Close() }(lis)
+	defer func(listener net.Listener) { _ = listener.Close() }(listener)
 	for {
-		con, err := lis.Accept()
-		if err != nil {
-			return err
+		acceptedConnection, acceptError := listener.Accept()
+		if acceptError != nil {
+			return acceptError
 		}
-		serverRespond(self, con)
+		ServerRespond(self, &acceptedConnection)
 	}
 }
 
-// Handle incoming client socket.
-func serverRespond(self *Server, socket net.Conn) {
+// Handle incoming client Socket.
+func ServerRespond(self *Server, socket *net.Conn) {
 	// Create the request.
 	request := &Request{
-		socket:  socket,
-		headers: &Headers{},
-		method:  "",
-		path:    "",
-		version: "",
+		Socket:  socket,
+		Server:  self,
+		Headers: &Headers{},
+		Method:  "",
+		Path:    "",
+		Version: "",
 	}
 
-	// Find method.
+	// Find Method.
 	method, eol, methodError := requestFindNextWord(request)
 	if methodError != nil {
-		serverNotifyError(self, methodError)
-		_ = socket.Close()
+		ServerNotifyError(self, methodError)
+		_ = (*socket).Close()
 		return
 	}
 
 	// Make sure eol is not reached.
 	if eol {
-		serverNotifyRequestError(
-			self, request, errors.New("request line must provide the method, path and protocol version before feeding a new line"),
+		ServerNotifyRequestError(
+			self, request, errors.New("request line must provide the Method, Path and protocol Version before feeding a new line"),
 		)
-		_ = socket.Close()
+		_ = (*socket).Close()
 		return
 	}
 
-	// Find path.
+	// Find Path.
 	path, eol, pathError := requestFindNextWord(request)
 	if pathError != nil {
-		serverNotifyError(self, pathError)
-		_ = socket.Close()
+		ServerNotifyError(self, pathError)
+		_ = (*socket).Close()
 		return
 	}
 
 	// Make sure eol is not reached.
 	if eol {
-		serverNotifyRequestError(
-			self, request, errors.New("request line must provide a method, a path and the protocol version before feeding a new line"),
+		ServerNotifyRequestError(
+			self, request, errors.New("request line must provide a Method, a Path and the protocol Version before feeding a new line"),
 		)
-		_ = socket.Close()
+		_ = (*socket).Close()
 		return
 	}
 
 	// Find protocol.
 	protocol, eol, protocolError := requestFindNextWord(request)
 	if protocolError != nil {
-		serverNotifyError(self, protocolError)
-		_ = socket.Close()
+		ServerNotifyError(self, protocolError)
+		_ = (*socket).Close()
 		return
 	}
 
@@ -106,20 +110,20 @@ func serverRespond(self *Server, socket net.Conn) {
 
 	// Make sure eol is reached.
 	if !eol {
-		serverNotifyRequestError(
-			self, request, errors.New("request line must feed a new line after providing the method, path and protocol version"),
+		ServerNotifyRequestError(
+			self, request, errors.New("request line must feed a new line after providing the Method, Path and protocol Version"),
 		)
-		_ = socket.Close()
+		_ = (*socket).Close()
 		return
 	}
 
-	// Find headers.
+	// Find Headers.
 	headers := Headers{}
 	for {
 		key, eol, keyError := requestFindNextWord(request)
 		if keyError != nil {
-			serverNotifyError(self, keyError)
-			_ = socket.Close()
+			ServerNotifyError(self, keyError)
+			_ = (*socket).Close()
 			return
 		}
 
@@ -127,35 +131,32 @@ func serverRespond(self *Server, socket net.Conn) {
 
 		// Check if eol is reached.
 		if eol {
-			// Check if it's the end of the headers section.
+			// Check if it's the end of the Headers section.
 			if 0 == keyLength || (1 == keyLength && cr == key[0]) {
-				// Happy path, we're done reading the headers, keep going.
+				// Happy Path, we're done reading the Headers, keep going.
 				break
 			}
 
-			// Sad path, we just received a header key without a value.
-			serverNotifyRequestError(
-				self, request, errors.New("header lines must provide a key and a value before feeding a new line"),
+			// Sad Path, we just received a Header key without a value.
+			ServerNotifyRequestError(
+				self, request, errors.New("Header lines must provide a key and a value before feeding a new line"),
 			)
-			_ = socket.Close()
+			_ = (*socket).Close()
 			return
 		}
 
 		// Make sure the key name ends with a semicolon.
 		if colon != key[keyLength-1] {
-			keySyntaxError := errors.New("header field keys and values must be separated by `: ` (semicolon and one blank space)")
-			serverNotifyRequestError(self, request, keySyntaxError)
-			_ = socket.Close()
+			keySyntaxError := errors.New("Header field keys and values must be separated by `: ` (semicolon and one blank space)")
+			ServerNotifyRequestError(self, request, keySyntaxError)
+			_ = (*socket).Close()
 			return
 		}
 
 		// Strip the semicolon.
 		keyStringified := strings.ToLower(string(key[:keyLength-1]))
 
-		value, valueError := requestFindNextLine(request)
-		if valueError != nil {
-			return
-		}
+		value := requestFindNextLine(request)
 
 		// Strip \r from the end of the string.
 		valueLength := len(value)
@@ -172,95 +173,91 @@ func serverRespond(self *Server, socket net.Conn) {
 	requestWithHeaders(request, &headers)
 
 	resp := Response{
-		socket:        socket,
-		version:       string(protocol),
-		lockedStatus:  false,
-		lockedHeaders: false,
+		Socket:        socket,
+		Server:        self,
+		Request:       request,
+		Version:       string(protocol),
+		LockedStatus:  false,
+		LockedHeaders: false,
 	}
 
-	serverNotifyRequest(self, request, &resp)
-	_ = socket.Close()
+	ServerNotifyRequest(self, request, &resp)
+	_ = (*socket).Close()
 }
 
 // Notify all listeners that a request has been received.
-func serverNotifyRequest(self *Server, request *Request, response *Response) {
-	for _, listener := range self.serverResponseHandlers {
-		responseError := listener(request, response)
-		if responseError != nil {
-			serverNotifyResponseError(self, request, response, responseError)
-		}
+func ServerNotifyRequest(self *Server, request *Request, response *Response) {
+	for _, listener := range self.ServerResponseHandlers {
+		listener(request, response)
 	}
 }
 
 // Register a callback to execute
-// whenever the Server receives a Request.
-func serverOnRequest(
+// whenever the server receives a Request.
+func ServerOnRequest(
 	self *Server,
 	method string,
 	path string,
-	callback func(*Request, *Response) error,
+	callback func(*Request, *Response),
 ) {
-	self.serverResponseHandlers = append(
-		self.serverResponseHandlers, func(request *Request, response *Response) error {
-			if method == request.method && path == request.path {
-				err := callback(request, response)
-				if err != nil {
-					return err
-				}
+	self.ServerResponseHandlers = append(
+		self.ServerResponseHandlers, func(request *Request, response *Response) {
+			if method == request.Method && path == request.Path {
+				callback(request, response)
 			}
-			return nil
 		},
 	)
 }
 
 // Notify all listeners of a server error.
-func serverNotifyError(self *Server, error error) {
-	for _, listener := range self.serverErrorHandlers {
+func ServerNotifyError(self *Server, error error) {
+	for _, listener := range self.ServerErrorHandlers {
 		listener(error)
 	}
 }
 
 // Collect server errors.
-func serverOnError(self *Server, callback func(error)) {
-	self.serverErrorHandlers = append(self.serverErrorHandlers, callback)
+func ServerOnError(self *Server, callback func(error)) {
+	self.ServerErrorHandlers = append(self.ServerErrorHandlers, callback)
 }
 
 // Notify all listeners of a request error.
-func serverNotifyRequestError(self *Server, request *Request, error error) {
-	for _, listener := range self.serverRequestErrorHandlers {
+func ServerNotifyRequestError(self *Server, request *Request, error error) {
+	for _, listener := range self.ServerRequestErrorHandlers {
 		listener(request, error)
 	}
 }
 
 // Collect request errors.
-func serverOnRequestError(self *Server, callback func(*Request, error)) {
-	self.serverRequestErrorHandlers = append(self.serverRequestErrorHandlers, callback)
+func ServerOnRequestError(self *Server, callback func(*Request, error)) {
+	self.ServerRequestErrorHandlers = append(self.ServerRequestErrorHandlers, callback)
 }
 
 // Notify all listeners of a request error.
-func serverNotifyResponseError(self *Server, request *Request, response *Response, error error) {
-	for _, listener := range self.serverResponseErrorHandlers {
+func ServerNotifyResponseError(self *Server, request *Request, response *Response, error error) {
+	for _, listener := range self.ServerResponseErrorHandlers {
 		listener(request, response, error)
 	}
 }
 
 // Collect request errors.
-func serverOnResponseError(self *Server, callback func(*Request, *Response, error)) {
-	self.serverResponseErrorHandlers = append(self.serverResponseErrorHandlers, callback)
+func ServerOnResponseError(self *Server, callback func(*Request, *Response, error)) {
+	self.ServerResponseErrorHandlers = append(self.ServerResponseErrorHandlers, callback)
 }
 
 type Headers map[string]string
 
 type Request struct {
-	socket  net.Conn
-	method  string
-	path    string
-	version string
-	headers *Headers
+	Socket  *net.Conn
+	Server  *Server
+	Method  string
+	Path    string
+	Version string
+	Headers *Headers
 }
 
 // Find the next word in a request.
-// This is useful when parsing headers in requests.
+// This is useful when parsing Headers in requests.
 //
 // A "word" is intended as any sequence of characters
 // that doesn't contain blank spaces.
@@ -270,7 +267,8 @@ type Request struct {
 func requestFindNextWord(self *Request) ([]byte, bool, error) {
 	reader := make([]byte, 1)
 	var characters []byte
-	read, readError := self.socket.Read(reader)
+	socket := *self.Socket
+	read, readError := socket.Read(reader)
 	if readError != nil {
 		return nil, false, readError
 	}
@@ -284,7 +282,7 @@ func requestFindNextWord(self *Request) ([]byte, bool, error) {
 
 		characters = append(characters, reader[0])
 
-		read, readError = self.socket.Read(reader)
+		read, readError = socket.Read(reader)
 		if readError != nil {
 			return nil, false, readError
 		}
@@ -292,266 +290,376 @@ func requestFindNextWord(self *Request) ([]byte, bool, error) {
 	return characters, false, nil
 }
 
-func requestFindNextLine(self *Request) ([]byte, error) {
+// Find the next line in the Request.
+func requestFindNextLine(self *Request) []byte {
 	var characters []byte
 	reader := make([]byte, 1)
-	read, readError := self.socket.Read(reader)
+	socket := *self.Socket
+	read, readError := socket.Read(reader)
 
 	if readError != nil {
-		return nil, readError
+		return characters
 	}
 
 	for read > 0 {
 		if eol == reader[0] {
-			return characters, nil
+			return characters
 		}
 
 		characters = append(characters, reader[0])
-		read, readError = self.socket.Read(reader)
+		read, readError = socket.Read(reader)
 		if readError != nil {
-			return nil, readError
+			return characters
 		}
 	}
-	return characters, nil
+	return characters
 }
 
+// Set the method of the Request.
 func requestWithMethod(self *Request, method string) {
-	self.method = method
+	self.Method = method
 }
 
+// Set the path of the Request.
 func requestWithPath(self *Request, path string) {
-	self.path = path
+	self.Path = path
 }
 
+// Set the protocol of the Request.
 func requestWithProtocol(self *Request, version string) {
-	self.version = version
+	self.Version = version
 }
 
+// Set the Headers of the Request.
 func requestWithHeaders(self *Request, headers *Headers) {
-	self.headers = headers
+	self.Headers = headers
+}
+
+// Parse the body of the Request as form.
+// Supports multipart and url encodings.
+func Form(self *Request) (*multipart.Form, error) {
+	headers := *self.Headers
+
+	contentType := headers["content-type"]
+	rootMime := "text/plain"
+	boundary := ""
+
+	for index, item := range strings.Split(contentType, "; ") {
+		if 0 == index {
+			rootMime = item
+			continue
+		}
+
+		attribute := strings.Split(item, "=")
+		attributeLength := len(attribute)
+		if attributeLength != 2 || "boundary" != attribute[0] {
+			return nil, fmt.Errorf("Multipart boundary identifier should follow the mime type in content-type as `boundary=some_identifier`, provided `%s` instead.", item)
+		}
+		boundary = attribute[1]
+	}
+
+	if "application/x-www-form-urlencoded" == rootMime {
+		line := requestFindNextLine(self)
+		query, err := url.ParseQuery(string(line))
+		if err != nil {
+			return nil, err
+		}
+
+		form := multipart.Form{}
+
+		for key, value := range query {
+			form.Value[key] = value
+		}
+		return &form, nil
+	} else if "" == boundary {
+		return nil, errors.New("Invalid empty boundary provided.")
+	}
+
+	if "multipart/form-data" != rootMime && "multipart/mixed" != rootMime && "multipart/alternative" != rootMime && "text/plain" != rootMime {
+		return nil, fmt.Errorf("Multipart requests accept mimes of `multipart/form-data`, `multipart/mixed`, `multipart/alternative`, `text/plain` and nothing else, provided `%s` instead.", rootMime)
+	}
+
+	var rio io.Reader = &Reader{Request: self}
+
+	reader := multipart.NewReader(rio, boundary)
+
+	form, err := reader.ReadForm(2 * gb)
+	if err != nil {
+		return nil, err
+	}
+
+	return form, nil
+}
+
+type Reader struct {
+	Request *Request
+}
+
+func (r *Reader) Read(p []byte) (n int, err error) {
+	socket := *r.Request.Socket
+
+	read, err := socket.Read(p)
+	if err != nil {
+		return 0, err
+	}
+
+	return read, nil
 }
 
 type Response struct {
-	socket        net.Conn
-	version       string
-	lockedStatus  bool
-	lockedHeaders bool
+	Socket        *net.Conn
+	Server        *Server
+	Request       *Request
+	Version       string
+	LockedStatus  bool
+	LockedHeaders bool
 }
 
-// Send the status.
+// Send the Status.
+//
+// The status message will be inferred automatically based on the code.
 //
 // This will lock the status, which makes it
 // so that the next time you invoke this
-// function it will return an error.
+// function it will fail with an error.
 //
-// The message defaults to blank.
-//
-// If the message is left blank,
-// an algorithm will try to
-// populate it automatically according to the status code.
-func status(self *Response, status int, message string) error {
-	if self.lockedStatus {
-		return errors.New("status is locked")
+// You can retrieve this error using ServerOnResponseError.
+func Status(self *Response, code int) {
+	var message string
+	switch code {
+	case 100:
+		message = "Continue"
+	case 101:
+		message = "Switching Protocols"
+	case 102:
+		message = "Processing"
+	case 103:
+		message = "Early Hints"
+	case 200:
+		message = "OK"
+	case 201:
+		message = "Created"
+	case 202:
+		message = "Accepted"
+	case 203:
+		message = "Non-Authoritative Information"
+	case 204:
+		message = "No Content"
+	case 205:
+		message = "Reset Content"
+	case 206:
+		message = "Partial Content"
+	case 207:
+		message = "Multi-Status"
+	case 208:
+		message = "Already Reported"
+	case 226:
+		message = "IM Used"
+	case 300:
+		message = "Multiple Choices"
+	case 301:
+		message = "Moved Permanently"
+	case 302:
+		message = "Found"
+	case 303:
+		message = "See Other"
+	case 304:
+		message = "Not Modified"
+	case 305:
+		message = "Use Proxy"
+	case 307:
+		message = "Temporary Redirect"
+	case 308:
+		message = "Permanent Redirect"
+	case 400:
+		message = "Bad Request"
+	case 401:
+		message = "Unauthorized"
+	case 402:
+		message = "Payment Required"
+	case 403:
+		message = "Forbidden"
+	case 404:
+		message = "Not Found"
+	case 405:
+		message = "Method Not Allowed"
+	case 406:
+		message = "Not Acceptable"
+	case 407:
+		message = "Proxy Authentication Required"
+	case 408:
+		message = "Request Timeout"
+	case 409:
+		message = "Conflict"
+	case 410:
+		message = "Gone"
+	case 411:
+		message = "Length Required"
+	case 412:
+		message = "Precondition Failed"
+	case 413:
+		message = "Payload Too Large"
+	case 414:
+		message = "URI Too Long"
+	case 415:
+		message = "Unsupported Media Type"
+	case 416:
+		message = "Range Not Satisfiable"
+	case 417:
+		message = "Expectation Failed"
+	case 421:
+		message = "Misdirected Request"
+	case 422:
+		message = "Unprocessable Entity"
+	case 423:
+		message = "Locked"
+	case 424:
+		message = "Failed Dependency"
+	case 426:
+		message = "Upgrade Required"
+	case 428:
+		message = "Precondition Required"
+	case 429:
+		message = "Too Many Requests"
+	case 431:
+		message = "Request Header Fields Too Large"
+	case 451:
+		message = "Unavailable For Legal Reasons"
+	case 500:
+		message = "Internal server Error"
+	case 501:
+		message = "Not Implemented"
+	case 502:
+		message = "Bad Gateway"
+	case 503:
+		message = "Service Unavailable"
+	case 504:
+		message = "Gateway Timeout"
+	case 505:
+		message = "HTTP Version Not Supported"
+	case 506:
+		message = "Variant Also Negotiates"
+	case 507:
+		message = "Insufficient Storage"
+	case 508:
+		message = "Loop Detected"
+	case 510:
+		message = "Not Extended"
+	case 511:
+		message = "Network Authentication Required"
+	default:
+		message = ""
 	}
-	messageLocal := message
-	self.lockedStatus = true
-	if "" == messageLocal {
-		switch status {
-		case 100:
-			messageLocal = "Continue"
-		case 101:
-			messageLocal = "Switching Protocols"
-		case 102:
-			messageLocal = "Processing"
-		case 103:
-			messageLocal = "Early Hints"
-		case 200:
-			messageLocal = "OK"
-		case 201:
-			messageLocal = "Created"
-		case 202:
-			messageLocal = "Accepted"
-		case 203:
-			messageLocal = "Non-Authoritative Information"
-		case 204:
-			messageLocal = "No Content"
-		case 205:
-			messageLocal = "Reset Content"
-		case 206:
-			messageLocal = "Partial Content"
-		case 207:
-			messageLocal = "Multi-Status"
-		case 208:
-			messageLocal = "Already Reported"
-		case 226:
-			messageLocal = "IM Used"
-		case 300:
-			messageLocal = "Multiple Choices"
-		case 301:
-			messageLocal = "Moved Permanently"
-		case 302:
-			messageLocal = "Found"
-		case 303:
-			messageLocal = "See Other"
-		case 304:
-			messageLocal = "Not Modified"
-		case 305:
-			messageLocal = "Use Proxy"
-		case 307:
-			messageLocal = "Temporary Redirect"
-		case 308:
-			messageLocal = "Permanent Redirect"
-		case 400:
-			messageLocal = "Bad Request"
-		case 401:
-			messageLocal = "Unauthorized"
-		case 402:
-			messageLocal = "Payment Required"
-		case 403:
-			messageLocal = "Forbidden"
-		case 404:
-			messageLocal = "Not Found"
-		case 405:
-			messageLocal = "Method Not Allowed"
-		case 406:
-			messageLocal = "Not Acceptable"
-		case 407:
-			messageLocal = "Proxy Authentication Required"
-		case 408:
-			messageLocal = "Request Timeout"
-		case 409:
-			messageLocal = "Conflict"
-		case 410:
-			messageLocal = "Gone"
-		case 411:
-			messageLocal = "Length Required"
-		case 412:
-			messageLocal = "Precondition Failed"
-		case 413:
-			messageLocal = "Payload Too Large"
-		case 414:
-			messageLocal = "URI Too Long"
-		case 415:
-			messageLocal = "Unsupported Media Type"
-		case 416:
-			messageLocal = "Range Not Satisfiable"
-		case 417:
-			messageLocal = "Expectation Failed"
-		case 421:
-			messageLocal = "Misdirected Request"
-		case 422:
-			messageLocal = "Unprocessable Entity"
-		case 423:
-			messageLocal = "Locked"
-		case 424:
-			messageLocal = "Failed Dependency"
-		case 426:
-			messageLocal = "Upgrade Required"
-		case 428:
-			messageLocal = "Precondition Required"
-		case 429:
-			messageLocal = "Too Many Requests"
-		case 431:
-			messageLocal = "Request Header Fields Too Large"
-		case 451:
-			messageLocal = "Unavailable For Legal Reasons"
-		case 500:
-			messageLocal = "Internal Server Error"
-		case 501:
-			messageLocal = "Not Implemented"
-		case 502:
-			messageLocal = "Bad Gateway"
-		case 503:
-			messageLocal = "Service Unavailable"
-		case 504:
-			messageLocal = "Gateway Timeout"
-		case 505:
-			messageLocal = "HTTP Version Not Supported"
-		case 506:
-			messageLocal = "Variant Also Negotiates"
-		case 507:
-			messageLocal = "Insufficient Storage"
-		case 508:
-			messageLocal = "Loop Detected"
-		case 510:
-			messageLocal = "Not Extended"
-		case 511:
-			messageLocal = "Network Authentication Required"
-		default:
-			messageLocal = ""
-		}
-		if "" == messageLocal {
-			return errors.New("unknown status code")
-		}
+	if "" == message {
+		ServerNotifyResponseError(self.Server, self.Request, self, errors.New("unknown Status code"))
+		return
 	}
-	feed := fmt.Sprintf("%s %d %s", self.version, status, message)
-	_, err := self.socket.Write([]byte(feed))
-	if err != nil {
-		return err
-	}
-	return nil
+	StatusMessage(self, code, message)
 }
 
-// Send a header.
+// Send the status code and message.
 //
-// If the status has not been sent already, it will be
-// This means the status will become locked.
-func header(self *Response, key string, value string) error {
-	if !self.lockedStatus {
-		err := status(self, 200, "OK")
-		if err != nil {
-			return err
-		}
+// This will lock the status, which makes it
+// so that the next time you invoke this
+// function it will fail with an error.
+//
+// You can retrieve this error using ServerOnResponseError.
+func StatusMessage(self *Response, code int, message string) {
+	if self.LockedStatus {
+		ServerNotifyResponseError(self.Server, self.Request, self, errors.New("Status is locked"))
+		return
 	}
-
-	if self.lockedHeaders {
-		return errors.New("headers locked")
-	}
-
-	_, err := self.socket.Write([]byte("\n" + key + ": " + value))
+	self.LockedStatus = true
+	feed := fmt.Sprintf("%s %d %s", self.Version, code, message)
+	_, err := (*self.Socket).Write([]byte(feed))
 	if err != nil {
-		return err
+		ServerNotifyResponseError(self.Server, self.Request, self, err)
+		return
+	}
+}
+
+// Send a Header.
+//
+// If the status has not been sent already, a default "200 OK" status will be sent immediately.
+//
+// This means the status will become locked and further attempts to send the status will fail with an error.
+//
+// You can retrieve this error using ServerOnResponseError.
+func Header(self *Response, key string, value string) {
+	if !self.LockedStatus {
+		StatusMessage(self, 200, "OK")
 	}
 
-	return nil
+	if self.LockedHeaders {
+		ServerNotifyResponseError(self.Server, self.Request, self, errors.New("Headers locked"))
+		return
+	}
+
+	_, err := (*self.Socket).Write([]byte("\r\n" + key + ": " + value))
+	if err != nil {
+		ServerNotifyResponseError(self.Server, self.Request, self, err)
+		return
+	}
 }
 
 // Send binary safe content.
 //
-// If the status has not been sent already, it will be sent automatically as "200 OK".
-// This means the status will become locked, meaning you can no longer set it after invoking this function.
+// If the status has not been sent already, a default "200 OK" status will be sent immediately.
 //
-// Headers will also be automatically locked.
-func send(self *Response, value []byte) error {
-	if !self.lockedStatus {
-		err := status(self, 200, "OK")
+// This means the status will become locked and further attempts to send the status will fail with an error.
+//
+// Headers will also be automatically locked and further attempts to send headers will fail with errors.
+//
+// You can retrieve these errors using ServerOnResponseError.
+func Send(self *Response, value []byte) {
+	if !self.LockedStatus {
+		StatusMessage(self, 200, "OK")
+	}
+
+	socket := *self.Socket
+
+	if !self.LockedHeaders {
+		self.LockedHeaders = true
+		_, err := socket.Write([]byte("\r\n\r\n"))
 		if err != nil {
-			return err
+			ServerNotifyResponseError(self.Server, self.Request, self, err)
+			return
 		}
 	}
 
-	if !self.lockedHeaders {
-		self.lockedHeaders = true
-		_, err := self.socket.Write([]byte("\n\n"))
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err := self.socket.Write(value)
+	_, err := socket.Write(value)
 	if err != nil {
-		return err
+		ServerNotifyResponseError(self.Server, self.Request, self, err)
+		return
 	}
-
-	return nil
 }
 
-// Send utf8 content.
+// Send utf-8 safe content.
 //
-// If the status has not been sent already, it will be sent automatically as "200 OK".
-// This means the status will become locked, meaning you can no longer set it after invoking this function.
+// Echo formats according to a format specifier.
 //
-// Headers will also be automatically locked.
-func echo(self *Response, value string) error {
-	return send(self, []byte(value))
+// If the status has not been sent already, a default "200 OK" status will be sent immediately.
+//
+// This means the status will become locked and further attempts to send the status will fail with an error.
+//
+// Headers will also be automatically locked and further attempts to send headers will fail with errors.
+//
+// You can retrieve these errors using ServerOnResponseError.
+func Echo(self *Response, format string, a ...any) {
+	Send(self, []byte(fmt.Sprintf(format, a...)))
+}
+
+func Accept(self *Request, acceptedMimes ...string) error {
+	requestedMime := (*self.Headers)["content-type"]
+	for _, acceptedMime := range acceptedMimes {
+		if acceptedMime == "*" || strings.HasPrefix(requestedMime, acceptedMime) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Requested mime type %s is not allowed.", requestedMime)
+}
+
+func POST(self *Request, key string) {
+
 }
