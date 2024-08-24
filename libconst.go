@@ -1,4 +1,4 @@
-package main
+package frizzante
 
 const eol = byte('\n')
 const space = byte(' ')
