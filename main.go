@@ -1,22 +1,22 @@
 package main
 
 func main() {
-	server := ServerCreate(8080)
-
-	ServerOnResponseError(
-		server, func(request *Request, response *Response, err error) {
-			println("Response Error -", err.Error())
-		},
-	)
-
-	ServerOnRequest(
-		server, "POST", "/", func(request *Request, response *Response) {
-			form, _ := Form(request)
-			username := form.Value["username"][0]
-			Header(response, "content-type", "text/html")
-			Status(response, 200)
-			Echo(response, "hello %s", username)
-		},
-	)
-	_ = ServerStart(server)
+	server := ServerCreate()
+	ServerWithPort(server, 8080)
+	ServerOnResponseError(server, func(request *Request, response *Response, error error) {
+		println("Response Error -", error.Error())
+	})
+	ServerOnInformation(server, func(information string) {
+		println("Information -", information)
+	})
+	routerError := ServerWithFileSystemRouter(server, "router")
+	if routerError != nil {
+		println("Error -", routerError.Error())
+		return
+	}
+	startError := ServerStart(server)
+	if startError != nil {
+		println(startError.Error())
+		return
+	}
 }

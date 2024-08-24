@@ -7,11 +7,15 @@ import (
 	"mime/multipart"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
+	"plugin"
 	"strconv"
 	"strings"
 )
 
 type Server struct {
+	ServerInformationHandlers   []func(string)
 	ServerErrorHandlers         []func(error)
 	ServerRequestErrorHandlers  []func(*Request, error)
 	ServerResponseErrorHandlers []func(*Request, *Response, error)
@@ -22,14 +26,19 @@ type Server struct {
 }
 
 // Create a server.
-func ServerCreate(port int) *Server {
+func ServerCreate() *Server {
 	return &Server{
+		ServerInformationHandlers:  []func(string){},
 		ServerErrorHandlers:        []func(error){},
 		ServerRequestErrorHandlers: []func(*Request, error){},
 		ServerResponseHandlers:     []func(*Request, *Response){},
-		Port:                       port,
-		Buffer:                     make([]byte, 1024),
+		Port:                       80,
 	}
+}
+
+// Set the server port.
+func ServerWithPort(self *Server, port int) {
+	self.Port = port
 }
 
 // Start the server.
@@ -38,6 +47,8 @@ func ServerStart(self *Server) error {
 	if listenError != nil {
 		return listenError
 	}
+
+	ServerNotifyInformation(self, "Listening on http://127.0.0.1:%d", self.Port)
 
 	defer func(listener net.Listener) { _ = listener.Close() }(listener)
 	for {
@@ -198,7 +209,7 @@ func ServerOnRequest(
 	self *Server,
 	method string,
 	path string,
-	callback func(*Request, *Response),
+	callback func(request *Request, response *Response),
 ) {
 	self.ServerResponseHandlers = append(
 		self.ServerResponseHandlers, func(request *Request, response *Response) {
@@ -209,6 +220,68 @@ func ServerOnRequest(
 	)
 }
 
+// Use the filesystem as a router.
+func ServerWithFileSystemRouter(self *Server, directory string) error {
+	soIdentifier := "router.so"
+	soIdentifierLength := len(soIdentifier)
+
+	walkError := filepath.Walk(
+		directory, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if !strings.HasSuffix(path, soIdentifier) {
+				return nil
+			}
+
+			filePath := strings.Replace(path, directory, "", 1)[soIdentifierLength-2:]
+			filePathChunks := strings.Split(filePath, "/")
+			filePathChunksLength := len(filePathChunks)
+			webPath := strings.Join(filePathChunks[:filePathChunksLength-1], "/")
+
+			if !strings.HasPrefix(webPath, "/") {
+				webPath = "/" + webPath
+			}
+
+			pluginLocal, err := plugin.Open(path)
+			if err != nil {
+				return err
+			}
+
+			webFunctions := map[string]func(*Request, *Response){}
+
+			symbol, err := pluginLocal.Lookup("Get")
+			if err == nil {
+				webFunctions["Get"] = symbol.(func(*Request, *Response))
+			}
+
+			for webMethod, webFunction := range webFunctions {
+				ServerNotifyInformation(self, fmt.Sprintf("Listening for requests at %s %s", webMethod, webPath))
+				ServerOnRequest(self, webMethod, webPath, webFunction)
+				ServerOnRequest(self, webMethod, webPath+"/", func(request *Request, response *Response) {
+					Status(response, 308)
+					Header(response, "Location", webPath)
+				})
+			}
+			return nil
+		},
+	)
+
+	if walkError != nil {
+		return walkError
+	}
+
+	return nil
+}
+
+// Notify all listeners of a server error.
+func ServerNotifyInformation(self *Server, format string, a ...any) {
+	for _, listener := range self.ServerInformationHandlers {
+		listener(fmt.Sprintf(format, a...))
+	}
+}
+
 // Notify all listeners of a server error.
 func ServerNotifyError(self *Server, error error) {
 	for _, listener := range self.ServerErrorHandlers {
@@ -216,8 +289,13 @@ func ServerNotifyError(self *Server, error error) {
 	}
 }
 
+// Collect server information.
+func ServerOnInformation(self *Server, callback func(information string)) {
+	self.ServerInformationHandlers = append(self.ServerInformationHandlers, callback)
+}
+
 // Collect server errors.
-func ServerOnError(self *Server, callback func(error)) {
+func ServerOnError(self *Server, callback func(error error)) {
 	self.ServerErrorHandlers = append(self.ServerErrorHandlers, callback)
 }
 
@@ -229,7 +307,7 @@ func ServerNotifyRequestError(self *Server, request *Request, error error) {
 }
 
 // Collect request errors.
-func ServerOnRequestError(self *Server, callback func(*Request, error)) {
+func ServerOnRequestError(self *Server, callback func(request *Request, error error)) {
 	self.ServerRequestErrorHandlers = append(self.ServerRequestErrorHandlers, callback)
 }
 
@@ -241,7 +319,7 @@ func ServerNotifyResponseError(self *Server, request *Request, response *Respons
 }
 
 // Collect request errors.
-func ServerOnResponseError(self *Server, callback func(*Request, *Response, error)) {
+func ServerOnResponseError(self *Server, callback func(request *Request, response *Response, error error)) {
 	self.ServerResponseErrorHandlers = append(self.ServerResponseErrorHandlers, callback)
 }
 
@@ -645,6 +723,8 @@ func Send(self *Response, value []byte) {
 // Headers will also be automatically locked and further attempts to send headers will fail with errors.
 //
 // You can retrieve these errors using ServerOnResponseError.
+//
+// See fmt.Sprintf.
 func Echo(self *Response, format string, a ...any) {
 	Send(self, []byte(fmt.Sprintf(format, a...)))
 }
