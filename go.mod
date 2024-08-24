@@ -1,3 +1,3 @@
-module frizzante
+module github.com/razshare/frizzante
 
-go 1.22
+go 1.23

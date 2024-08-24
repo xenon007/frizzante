@@ -48,7 +48,7 @@ func ServerStart(self *Server) error {
 		return listenError
 	}
 
-	ServerNotifyInformation(self, "Listening on http://127.0.0.1:%d", self.Port)
+	ServerNotifyInformation(self, fmt.Sprintf("Listening on http://127.0.0.1:%d", self.Port))
 
 	defer func(listener net.Listener) { _ = listener.Close() }(listener)
 	for {
@@ -221,19 +221,22 @@ func ServerOnRequest(
 }
 
 // Use the filesystem as a router.
-func ServerWithFileSystemRouter(self *Server, directory string) error {
-	soIdentifier := "router.so"
+func ServerWithFileSystemRouter(self *Server, directory string) {
+	soIdentifier := "frizzante.so"
 	soIdentifierLength := len(soIdentifier)
-
+	ServerNotifyInformation(self, fmt.Sprintf("Walking directory `%s`", directory))
 	walkError := filepath.Walk(
 		directory, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return err
+				ServerNotifyError(self, err)
+				return nil
 			}
 
 			if !strings.HasSuffix(path, soIdentifier) {
 				return nil
 			}
+
+			ServerNotifyInformation(self, fmt.Sprintf("Router plugin found `%s`", path))
 
 			filePath := strings.Replace(path, directory, "", 1)[soIdentifierLength-2:]
 			filePathChunks := strings.Split(filePath, "/")
@@ -244,10 +247,15 @@ func ServerWithFileSystemRouter(self *Server, directory string) error {
 				webPath = "/" + webPath
 			}
 
-			pluginLocal, err := plugin.Open(path)
-			if err != nil {
-				return err
+			ServerNotifyInformation(self, fmt.Sprintf("Attempting to load plugin `%s`...", path))
+
+			pluginLocal, pluginError := plugin.Open(path)
+			if pluginError != nil {
+				ServerNotifyError(self, pluginError)
+				return nil
 			}
+
+			ServerNotifyInformation(self, fmt.Sprintf("Plugin `%s` loaded.", path))
 
 			webFunctions := map[string]func(*Request, *Response){}
 
@@ -269,23 +277,22 @@ func ServerWithFileSystemRouter(self *Server, directory string) error {
 	)
 
 	if walkError != nil {
-		return walkError
+		ServerNotifyError(self, walkError)
+		return
 	}
-
-	return nil
 }
 
 // Notify all listeners of a server error.
-func ServerNotifyInformation(self *Server, format string, a ...any) {
+func ServerNotifyInformation(self *Server, information string) {
 	for _, listener := range self.ServerInformationHandlers {
-		listener(fmt.Sprintf(format, a...))
+		listener(information)
 	}
 }
 
 // Notify all listeners of a server error.
-func ServerNotifyError(self *Server, error error) {
+func ServerNotifyError(self *Server, err error) {
 	for _, listener := range self.ServerErrorHandlers {
-		listener(error)
+		listener(err)
 	}
 }
 
@@ -295,31 +302,31 @@ func ServerOnInformation(self *Server, callback func(information string)) {
 }
 
 // Collect server errors.
-func ServerOnError(self *Server, callback func(error error)) {
+func ServerOnError(self *Server, callback func(err error)) {
 	self.ServerErrorHandlers = append(self.ServerErrorHandlers, callback)
 }
 
 // Notify all listeners of a request error.
-func ServerNotifyRequestError(self *Server, request *Request, error error) {
+func ServerNotifyRequestError(self *Server, request *Request, err error) {
 	for _, listener := range self.ServerRequestErrorHandlers {
-		listener(request, error)
+		listener(request, err)
 	}
 }
 
 // Collect request errors.
-func ServerOnRequestError(self *Server, callback func(request *Request, error error)) {
+func ServerOnRequestError(self *Server, callback func(request *Request, err error)) {
 	self.ServerRequestErrorHandlers = append(self.ServerRequestErrorHandlers, callback)
 }
 
 // Notify all listeners of a request error.
-func ServerNotifyResponseError(self *Server, request *Request, response *Response, error error) {
+func ServerNotifyResponseError(self *Server, request *Request, response *Response, err error) {
 	for _, listener := range self.ServerResponseErrorHandlers {
-		listener(request, response, error)
+		listener(request, response, err)
 	}
 }
 
 // Collect request errors.
-func ServerOnResponseError(self *Server, callback func(request *Request, response *Response, error error)) {
+func ServerOnResponseError(self *Server, callback func(request *Request, response *Response, err error)) {
 	self.ServerResponseErrorHandlers = append(self.ServerResponseErrorHandlers, callback)
 }
 
