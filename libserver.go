@@ -16,7 +16,7 @@ type Server struct {
 	ServerRequestErrorHandlers  []func(*Request, error)
 	ServerResponseErrorHandlers []func(*Request, *Response, error)
 	ServerResponseHandlers      []func(*Request, *Response)
-	Sessions                    *map[string]*net.Conn
+	Sessions                    map[string]*net.Conn
 	Port                        int
 	Buffer                      []byte
 }

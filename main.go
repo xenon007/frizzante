@@ -3,9 +3,11 @@ package main
 func main() {
 	server := ServerCreate(8080)
 
-	ServerOnResponseError(server, func(request *Request, response *Response, err error) {
-		println("Response Error -", err.Error())
-	})
+	ServerOnResponseError(
+		server, func(request *Request, response *Response, err error) {
+			println("Response Error -", err.Error())
+		},
+	)
 
 	ServerOnRequest(
 		server, "POST", "/", func(request *Request, response *Response) {
