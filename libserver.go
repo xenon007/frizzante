@@ -7,9 +7,6 @@ import (
 	"mime/multipart"
 	"net"
 	"net/url"
-	"os"
-	"path/filepath"
-	"plugin"
 	"strconv"
 	"strings"
 )
@@ -218,68 +215,6 @@ func ServerOnRequest(
 			}
 		},
 	)
-}
-
-// Use the filesystem as a router.
-func ServerWithFileSystemRouter(self *Server, directory string) {
-	soIdentifier := "frizzante.so"
-	soIdentifierLength := len(soIdentifier)
-	ServerNotifyInformation(self, fmt.Sprintf("Walking directory `%s`", directory))
-	walkError := filepath.Walk(
-		directory, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				ServerNotifyError(self, err)
-				return nil
-			}
-
-			if !strings.HasSuffix(path, soIdentifier) {
-				return nil
-			}
-
-			ServerNotifyInformation(self, fmt.Sprintf("Router plugin found `%s`", path))
-
-			filePath := strings.Replace(path, directory, "", 1)[soIdentifierLength-2:]
-			filePathChunks := strings.Split(filePath, "/")
-			filePathChunksLength := len(filePathChunks)
-			webPath := strings.Join(filePathChunks[:filePathChunksLength-1], "/")
-
-			if !strings.HasPrefix(webPath, "/") {
-				webPath = "/" + webPath
-			}
-
-			ServerNotifyInformation(self, fmt.Sprintf("Attempting to load plugin `%s`...", path))
-
-			pluginLocal, pluginError := plugin.Open(path)
-			if pluginError != nil {
-				ServerNotifyError(self, pluginError)
-				return nil
-			}
-
-			ServerNotifyInformation(self, fmt.Sprintf("Plugin `%s` loaded.", path))
-
-			webFunctions := map[string]func(*Request, *Response){}
-
-			symbol, err := pluginLocal.Lookup("Get")
-			if err == nil {
-				webFunctions["Get"] = symbol.(func(*Request, *Response))
-			}
-
-			for webMethod, webFunction := range webFunctions {
-				ServerNotifyInformation(self, fmt.Sprintf("Listening for requests at %s %s", webMethod, webPath))
-				ServerOnRequest(self, webMethod, webPath, webFunction)
-				ServerOnRequest(self, webMethod, webPath+"/", func(request *Request, response *Response) {
-					Status(response, 308)
-					Header(response, "Location", webPath)
-				})
-			}
-			return nil
-		},
-	)
-
-	if walkError != nil {
-		ServerNotifyError(self, walkError)
-		return
-	}
 }
 
 // Notify all listeners of a server error.
