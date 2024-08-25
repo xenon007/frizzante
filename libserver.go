@@ -639,6 +639,7 @@ func Send(self *Response, value []byte) {
 	socket := *self.Socket
 
 	if !self.LockedHeaders {
+		Header(self, "content-type", "text/html")
 		self.LockedHeaders = true
 		_, err := socket.Write([]byte("\r\n\r\n"))
 		if err != nil {
