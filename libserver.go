@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
+
+import v8 "rogchap.com/v8go"
 
 type Server struct {
 	hostname             string
@@ -93,9 +95,141 @@ func ServerWithTemporaryDirectory(self *Server, temporaryDirectory string) {
 	self.temporaryDirectory = temporaryDirectory
 }
 
-// ServerWithNodeModulesDirectory sets the tls configuration.
+// ServerWithNodeModulesDirectory sets the location of the node_modules directory required by the svelte compiler.
 func ServerWithNodeModulesDirectory(self *Server, nodeModulesDirectory string) {
 	self.nodeModulesDirectory = nodeModulesDirectory
+}
+
+type RenderOptions struct {
+	server    *Server
+	workspace *Workspace
+	writer    *http.ResponseWriter
+	cache     map[string]func(props map[string]any) (string, error)
+	fileName  string
+	query     *url.Values
+}
+
+func convertSliceToV8Object(items []string) (*v8.ObjectTemplate, error) {
+	objectTemplate := v8.NewObjectTemplate(isolateGlobal)
+	for key, value := range items {
+		v8Value, v8ValueError := v8.NewValue(isolateGlobal, value)
+		if nil != v8ValueError {
+			return nil, v8ValueError
+		}
+		templateSetError := objectTemplate.Set(strconv.Itoa(key), v8Value)
+		if templateSetError != nil {
+			return nil, v8ValueError
+		}
+	}
+
+	return objectTemplate, nil
+}
+
+func convertUrlValuesToV8Object(urlValues *url.Values) (*v8.ObjectTemplate, error) {
+	objectTemplate := v8.NewObjectTemplate(isolateGlobal)
+	for key, value := range *urlValues {
+		v8Value, v8ValueError := convertSliceToV8Object(value)
+		if nil != v8ValueError {
+			return nil, v8ValueError
+		}
+		templateSetError := objectTemplate.Set(key, v8Value)
+		if templateSetError != nil {
+			return nil, templateSetError
+		}
+	}
+
+	return objectTemplate, nil
+}
+
+// render compiles, caches and serves svelte files.
+func render(options *RenderOptions) {
+	var html string
+	var renderError error
+
+	runCachedComponent, found := options.cache[options.fileName]
+	if found {
+		ServerNotifyInformation(
+			options.server, fmt.Sprintf("Cache hit for svelte component `%s`.", options.fileName),
+		)
+
+		query, queryError := convertUrlValuesToV8Object(options.query)
+
+		if nil != queryError {
+			ServerNotifyError(options.server, queryError)
+			return
+		}
+
+		html, renderError = runCachedComponent(map[string]any{
+			"query": query,
+		})
+	} else {
+		ServerNotifyInformation(
+			options.server, fmt.Sprintf("Compiling svelte component `%s`...", options.fileName),
+		)
+
+		runComponent, compileError := WorkspaceCompileSvelte(options.workspace, options.fileName)
+
+		options.cache[options.fileName] = runComponent
+
+		if nil != compileError {
+			ServerNotifyError(options.server, compileError)
+			return
+		}
+
+		ServerNotifyInformation(
+			options.server, fmt.Sprintf("Svelte component `%s` has been compiled.", options.fileName),
+		)
+
+		query, queryError := convertUrlValuesToV8Object(options.query)
+
+		if nil != queryError {
+			ServerNotifyError(options.server, queryError)
+			return
+		}
+
+		html, renderError = runComponent(map[string]any{
+			"query": query,
+		})
+	}
+
+	if nil != renderError {
+		ServerNotifyError(options.server, renderError)
+		return
+	}
+
+	header := (*options.writer).Header()
+
+	response := &Response{
+		server:                options.server,
+		writer:                options.writer,
+		header:                &header,
+		statusCode:            200,
+		lockedStatusAndHeader: false,
+	}
+
+	Header(response, "content-type", "text/html")
+	Echo(response, html)
+}
+
+// index checks  if the directory contains an index.svelte file and tries to serve it, if the index.svelte file is not found, it then checks for index.html and tries to server that instead and returns true, otherwise false.
+func index(
+	writer *http.ResponseWriter,
+	request *http.Request,
+	www string,
+) string {
+	path := strings.TrimRight(request.RequestURI, "/")
+
+	// index.svelte
+	location := path + "/index.svelte"
+	if !exists(www + location) {
+		// index.html
+		location = path + "/index.html"
+		if !exists(www + location) {
+			return ""
+		}
+	}
+
+	return location
 }
 
 // ServerWithFileServer creates a request handler that serves files from the local filesystem directories.
@@ -108,77 +242,47 @@ func ServerWithFileServer(self *Server, pattern string, directory string) {
 
 	cache := map[string]func(props map[string]any) (string, error){}
 
-	//serveAssets := http.FileServer(http.Dir(strings.Join(directories, " ")))
-	serveAssets := http.FileServer(http.Dir(directory))
+	www := strings.TrimRight(directory, "/")
+
+	filer := http.FileServer(http.Dir(www))
 
 	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, request *http.Request) {
-		fileNameBase, cutError := strings.CutPrefix(request.RequestURI, "?")
+		path, cutError := strings.CutPrefix(request.RequestURI, "?")
 		if !cutError {
-			fileNameBase, cutError = strings.CutPrefix(request.RequestURI, "&")
+			path, cutError = strings.CutPrefix(request.RequestURI, "&")
 		}
 
-		fileNameAbsolute, absoluteFileNameError := filepath.Abs(fmt.Sprintf("%s%s", directory, fileNameBase))
-		if nil != absoluteFileNameError {
-			ServerNotifyError(self, absoluteFileNameError)
-			return
-		}
+		fileName := fmt.Sprintf("%s%s", www, path)
 
-		if _, err := os.Stat(fileNameAbsolute); errors.Is(err, os.ErrNotExist) {
-			// path/to/whatever does not exist
-		}
+		stat, statError := os.Stat(fileName)
+		fileExists := nil == statError || !errors.Is(statError, os.ErrNotExist)
 
-		if strings.HasSuffix(fileNameAbsolute, ".svelte") {
-			query, queryError := url.ParseQuery(request.RequestURI)
-			if nil != queryError {
-				ServerNotifyError(self, queryError)
-				return
+		if fileExists {
+			if stat.IsDir() {
+				path = index(&writer, request, www)
+				fileName = fmt.Sprintf("%s%s", www, path)
 			}
 
-			var html string
-			var renderError error
-
-			cachedRender, found := cache[fileNameAbsolute]
-			if found {
-				ServerNotifyInformation(self, fmt.Sprintf("Cache hit for svelte component `%s`.", fileNameAbsolute))
-				html, renderError = cachedRender(map[string]any{
-					"query": query,
-				})
-			} else {
-				ServerNotifyInformation(self, fmt.Sprintf("Compiling svelte component `%s`...", fileNameAbsolute))
-				render, compileError := WorkspaceCompileSvelte(workspace, fileNameAbsolute)
-				cache[fileNameAbsolute] = render
-				if compileError != nil {
-					ServerNotifyError(self, compileError)
+			if strings.HasSuffix(fileName, ".svelte") {
+				query, queryError := url.ParseQuery(request.RequestURI)
+				if nil != queryError {
+					ServerNotifyError(self, queryError)
 					return
 				}
-				ServerNotifyInformation(
-					self, fmt.Sprintf("Svelte component `%s` has been compiled.", fileNameAbsolute),
-				)
-				html, renderError = render(map[string]any{
-					"query": query,
-				})
-			}
-
-			if nil != renderError {
-				ServerNotifyError(self, renderError)
+				options := &RenderOptions{
+					server:    self,
+					writer:    &writer,
+					workspace: workspace,
+					query:     &query,
+					fileName:  fileName,
+					cache:     cache,
+				}
+				render(options)
 				return
 			}
-
-			header := writer.Header()
-
-			response := &Response{
-				server:                self,
-				writer:                &writer,
-				header:                &header,
-				statusCode:            200,
-				lockedStatusAndHeader: false,
-			}
-			Header(response, "content-type", "text/html")
-			Echo(response, html)
-			return
 		}
 
-		serveAssets.ServeHTTP(writer, request)
+		filer.ServeHTTP(writer, request)
 	})
 }
 

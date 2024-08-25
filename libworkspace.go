@@ -156,12 +156,12 @@ func WorkspaceCompileSvelte(self *Workspace, svelteFileName string) (func(props 
 
 	ssrScript := string(regexSsr.ReplaceAll(ssrBundle.Contents, []byte("Component.render")))
 
-	render, ssrScriptError := contextGlobal.RunScript(ssrScript, svelteFileName)
+	renderFunction, ssrScriptError := contextGlobal.RunScript(ssrScript, svelteFileName)
 	if ssrScriptError != nil {
 		return nil, ssrScriptError
 	}
 
-	function, functionError := render.AsFunction()
+	function, functionError := renderFunction.AsFunction()
 
 	if functionError != nil {
 		return nil, functionError
