@@ -79,9 +79,7 @@ func ServerRespond(self *Server, socket *net.Conn) {
 
 	// Make sure eol is not reached.
 	if eol {
-		ServerNotifyRequestError(
-			self, request, errors.New("request line must provide the Method, Path and protocol Version before feeding a new line"),
-		)
+		ServerNotifyError(self, errors.New("Request line must provide the Method, Path and protocol Version before feeding a new line."))
 		_ = (*socket).Close()
 		return
 	}
@@ -96,9 +94,7 @@ func ServerRespond(self *Server, socket *net.Conn) {
 
 	// Make sure eol is not reached.
 	if eol {
-		ServerNotifyRequestError(
-			self, request, errors.New("request line must provide a Method, a Path and the protocol Version before feeding a new line"),
-		)
+		ServerNotifyError(self, errors.New("Request line must provide a Method, a Path and the protocol Version before feeding a new line,"))
 		_ = (*socket).Close()
 		return
 	}
@@ -118,9 +114,7 @@ func ServerRespond(self *Server, socket *net.Conn) {
 
 	// Make sure eol is reached.
 	if !eol {
-		ServerNotifyRequestError(
-			self, request, errors.New("request line must feed a new line after providing the Method, Path and protocol Version"),
-		)
+		ServerNotifyError(self, errors.New("Request line must feed a new line after providing the Method, Path and protocol Version."))
 		_ = (*socket).Close()
 		return
 	}
@@ -146,17 +140,15 @@ func ServerRespond(self *Server, socket *net.Conn) {
 			}
 
 			// Sad Path, we just received a Header key without a value.
-			ServerNotifyRequestError(
-				self, request, errors.New("Header lines must provide a key and a value before feeding a new line"),
-			)
+			ServerNotifyError(self, errors.New("Header lines must provide a key and a value before feeding a new line."))
 			_ = (*socket).Close()
 			return
 		}
 
 		// Make sure the key name ends with a semicolon.
 		if colon != key[keyLength-1] {
-			keySyntaxError := errors.New("Header field keys and values must be separated by `: ` (semicolon and one blank space)")
-			ServerNotifyRequestError(self, request, keySyntaxError)
+			keySyntaxError := errors.New("Header field keys and values must be separated by `: ` (semicolon and one blank space).")
+			ServerNotifyError(self, keySyntaxError)
 			_ = (*socket).Close()
 			return
 		}
@@ -239,30 +231,6 @@ func ServerOnInformation(self *Server, callback func(information string)) {
 // Collect server errors.
 func ServerOnError(self *Server, callback func(err error)) {
 	self.ServerErrorHandlers = append(self.ServerErrorHandlers, callback)
-}
-
-// Notify all listeners of a request error.
-func ServerNotifyRequestError(self *Server, request *Request, err error) {
-	for _, listener := range self.ServerRequestErrorHandlers {
-		listener(request, err)
-	}
-}
-
-// Collect request errors.
-func ServerOnRequestError(self *Server, callback func(request *Request, err error)) {
-	self.ServerRequestErrorHandlers = append(self.ServerRequestErrorHandlers, callback)
-}
-
-// Notify all listeners of a request error.
-func ServerNotifyResponseError(self *Server, request *Request, response *Response, err error) {
-	for _, listener := range self.ServerResponseErrorHandlers {
-		listener(request, response, err)
-	}
-}
-
-// Collect request errors.
-func ServerOnResponseError(self *Server, callback func(request *Request, response *Response, err error)) {
-	self.ServerResponseErrorHandlers = append(self.ServerResponseErrorHandlers, callback)
 }
 
 type Headers map[string]string
@@ -443,7 +411,7 @@ type Response struct {
 // so that the next time you invoke this
 // function it will fail with an error.
 //
-// You can retrieve this error using ServerOnResponseError.
+// You can retrieve this error using ServerOnError.
 func Status(self *Response, code int) {
 	var message string
 	switch code {
@@ -571,7 +539,7 @@ func Status(self *Response, code int) {
 		message = ""
 	}
 	if "" == message {
-		ServerNotifyResponseError(self.Server, self.Request, self, errors.New("unknown Status code"))
+		ServerNotifyError(self.Server, errors.New("Unknown Status code."))
 		return
 	}
 	StatusMessage(self, code, message)
@@ -583,17 +551,17 @@ func Status(self *Response, code int) {
 // so that the next time you invoke this
 // function it will fail with an error.
 //
-// You can retrieve this error using ServerOnResponseError.
+// You can retrieve this error using ServerOnError.
 func StatusMessage(self *Response, code int, message string) {
 	if self.LockedStatus {
-		ServerNotifyResponseError(self.Server, self.Request, self, errors.New("Status is locked"))
+		ServerNotifyError(self.Server, errors.New("Status is locked."))
 		return
 	}
 	self.LockedStatus = true
 	feed := fmt.Sprintf("%s %d %s", self.Version, code, message)
 	_, err := (*self.Socket).Write([]byte(feed))
 	if err != nil {
-		ServerNotifyResponseError(self.Server, self.Request, self, err)
+		ServerNotifyError(self.Server, err)
 		return
 	}
 }
@@ -604,20 +572,20 @@ func StatusMessage(self *Response, code int, message string) {
 //
 // This means the status will become locked and further attempts to send the status will fail with an error.
 //
-// You can retrieve this error using ServerOnResponseError.
+// You can retrieve this error using ServerOnError
 func Header(self *Response, key string, value string) {
 	if !self.LockedStatus {
 		StatusMessage(self, 200, "OK")
 	}
 
 	if self.LockedHeaders {
-		ServerNotifyResponseError(self.Server, self.Request, self, errors.New("Headers locked"))
+		ServerNotifyError(self.Server, errors.New("Headers locked."))
 		return
 	}
 
 	_, err := (*self.Socket).Write([]byte("\r\n" + key + ": " + value))
 	if err != nil {
-		ServerNotifyResponseError(self.Server, self.Request, self, err)
+		ServerNotifyError(self.Server, err)
 		return
 	}
 }
@@ -630,7 +598,7 @@ func Header(self *Response, key string, value string) {
 //
 // Headers will also be automatically locked and further attempts to send headers will fail with errors.
 //
-// You can retrieve these errors using ServerOnResponseError.
+// You can retrieve these errors using ServerOnError.
 func Send(self *Response, value []byte) {
 	if !self.LockedStatus {
 		StatusMessage(self, 200, "OK")
@@ -643,14 +611,14 @@ func Send(self *Response, value []byte) {
 		self.LockedHeaders = true
 		_, err := socket.Write([]byte("\r\n\r\n"))
 		if err != nil {
-			ServerNotifyResponseError(self.Server, self.Request, self, err)
+			ServerNotifyError(self.Server, err)
 			return
 		}
 	}
 
 	_, err := socket.Write(value)
 	if err != nil {
-		ServerNotifyResponseError(self.Server, self.Request, self, err)
+		ServerNotifyError(self.Server, err)
 		return
 	}
 }
@@ -665,7 +633,7 @@ func Send(self *Response, value []byte) {
 //
 // Headers will also be automatically locked and further attempts to send headers will fail with errors.
 //
-// You can retrieve these errors using ServerOnResponseError.
+// You can retrieve these errors using ServerOnError.
 //
 // See fmt.Sprintf.
 func Echo(self *Response, format string, a ...any) {
@@ -681,8 +649,4 @@ func Accept(self *Request, acceptedMimes ...string) error {
 	}
 
 	return fmt.Errorf("Requested mime type %s is not allowed.", requestedMime)
-}
-
-func POST(self *Request, key string) {
-
 }
