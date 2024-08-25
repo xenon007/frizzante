@@ -1,6 +1,8 @@
 package frizzante
 
-import v8 "rogchap.com/v8go"
+import (
+	v8 "rogchap.com/v8go"
+)
 
 const eol = byte('\n')
 const space = byte(' ')
