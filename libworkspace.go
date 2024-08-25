@@ -36,9 +36,9 @@ type Bundle struct {
 	Contents []byte
 }
 
-func WorkspaceBundle(self *Workspace, source []byte) (*Bundle, error) {
+func WorkspaceBundle(self *Workspace, includeRequirements bool, source []byte) (*Bundle, error) {
 	dirName := self.TemporaryDirectory
-	fileName := dirName + uuid.NewString() + ".js"
+	fileName := dirName + "/" + uuid.NewString() + ".js"
 
 	mkdirAllError := os.MkdirAll(dirName, 0777)
 	if mkdirAllError != nil {
@@ -82,6 +82,10 @@ func WorkspaceBundle(self *Workspace, source []byte) (*Bundle, error) {
 			return nil, removeError
 		}
 
+		if !includeRequirements {
+			return &Bundle{Contents: file.Contents, FileName: fileName}, nil
+		}
+
 		stringifiedContents := string(file.Contents)
 		replaced := strings.Replace(stringifiedContents, "\"use strict\";", "", 1)
 		concat := requirements + replaced
@@ -104,7 +108,7 @@ func WorkspaceCompileSvelte(self *Workspace, svelteFileName string) (func(props 
 		return nil, regexSsrError
 	}
 
-	bundle, bundleError := WorkspaceBundle(self, boot)
+	bundle, bundleError := WorkspaceBundle(self, true, boot)
 	if bundleError != nil {
 		return nil, bundleError
 	}
@@ -141,7 +145,11 @@ func WorkspaceCompileSvelte(self *Workspace, svelteFileName string) (func(props 
 
 	compiledScript := compileResult.String()
 
-	ssrBundle, renderBundleError := WorkspaceBundle(self, []byte(compiledScript))
+	includeRequirements := !contextGlobalRequirementsAdded
+	ssrBundle, renderBundleError := WorkspaceBundle(self, includeRequirements, []byte(compiledScript))
+	if !contextGlobalRequirementsAdded {
+		contextGlobalRequirementsAdded = true
+	}
 	if renderBundleError != nil {
 		return nil, renderBundleError
 	}
@@ -162,7 +170,10 @@ func WorkspaceCompileSvelte(self *Workspace, svelteFileName string) (func(props 
 	return func(props map[string]any) (string, error) {
 		objectTemplate := v8.NewObjectTemplate(isolateGlobal)
 		for key, value := range props {
-			objectTemplate.Set(key, value)
+			err := objectTemplate.Set(key, value)
+			if err != nil {
+				return "", err
+			}
 		}
 
 		instance, instanceError := objectTemplate.NewInstance(contextGlobal)

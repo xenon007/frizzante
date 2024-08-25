@@ -7,42 +7,49 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
 type Server struct {
-	hostname           string
-	port               int
-	server             *http.Server
-	mux                *http.ServeMux
-	sessions           map[string]*net.Conn
-	readTimeout        time.Duration
-	writeTimeout       time.Duration
-	maxHeaderBytes     int
-	errorLogger        *log.Logger
-	informationLogger  *log.Logger
-	tlsConfiguration   *tls.Config
-	informationHandler []func(string)
-	errorHandler       []func(error)
+	hostname             string
+	port                 int
+	server               *http.Server
+	mux                  *http.ServeMux
+	sessions             map[string]*net.Conn
+	readTimeout          time.Duration
+	writeTimeout         time.Duration
+	maxHeaderBytes       int
+	errorLogger          *log.Logger
+	informationLogger    *log.Logger
+	tlsConfiguration     *tls.Config
+	informationHandler   []func(string)
+	errorHandler         []func(error)
+	temporaryDirectory   string
+	nodeModulesDirectory string
 }
 
-// Create a server.
+// ServerCreate creates a server.
 func ServerCreate() *Server {
 	return &Server{
-		hostname:           "",
-		port:               80,
-		server:             nil,
-		mux:                http.NewServeMux(),
-		sessions:           map[string]*net.Conn{},
-		readTimeout:        10 * time.Second,
-		writeTimeout:       10 * time.Second,
-		maxHeaderBytes:     3 * mb,
-		errorLogger:        log.Default(),
-		informationLogger:  log.Default(),
-		tlsConfiguration:   nil,
-		informationHandler: []func(string){},
-		errorHandler:       []func(error){},
+		hostname:             "",
+		port:                 80,
+		server:               nil,
+		mux:                  http.NewServeMux(),
+		sessions:             map[string]*net.Conn{},
+		readTimeout:          10 * time.Second,
+		writeTimeout:         10 * time.Second,
+		maxHeaderBytes:       3 * mb,
+		errorLogger:          log.Default(),
+		informationLogger:    log.Default(),
+		tlsConfiguration:     nil,
+		informationHandler:   []func(string){},
+		errorHandler:         []func(error){},
+		temporaryDirectory:   ".temp",
+		nodeModulesDirectory: "node_modules",
 	}
 }
 
@@ -51,32 +58,131 @@ func ServerWithInterface(self *Server, hostname string) {
 	self.hostname = hostname
 }
 
-// Set the server port.
+// ServerWithPort sets the server port.
 func ServerWithPort(self *Server, port int) {
 	self.port = port
 }
 
+// ServerWithReadTimeout sets the read timeout.
 func ServerWithReadTimeout(self *Server, readTimeout time.Duration) {
 	self.readTimeout = readTimeout
 }
 
+// ServerWithWriteTimeout sets the write timeout.
 func ServerWithWriteTimeout(self *Server, writeTimeout time.Duration) {
 	self.writeTimeout = writeTimeout
 }
 
+// ServerWithMaxHeaderBytes sets the maximum allowed bytes in the header of the request.
 func ServerWithMaxHeaderBytes(self *Server, maxHeaderBytes int) {
 	self.maxHeaderBytes = maxHeaderBytes
 }
 
+// ServerWithErrorLogger sets the error logger.
 func ServerWithErrorLogger(self *Server, errorLogger *log.Logger) {
 	self.errorLogger = errorLogger
 }
 
+// ServerWithTlsConfiguration sets the tls configuration.
 func ServerWithTlsConfiguration(self *Server, tlsConfiguration *tls.Config) {
 	self.tlsConfiguration = tlsConfiguration
 }
 
-// Start the server.
+// ServerWithTemporaryDirectory sets the tls configuration.
+func ServerWithTemporaryDirectory(self *Server, temporaryDirectory string) {
+	self.temporaryDirectory = temporaryDirectory
+}
+
+// ServerWithNodeModulesDirectory sets the tls configuration.
+func ServerWithNodeModulesDirectory(self *Server, nodeModulesDirectory string) {
+	self.nodeModulesDirectory = nodeModulesDirectory
+}
+
+// ServerWithFileServer creates a request handler that serves files from the local filesystem directories.
+//
+// Files ending with `.svelte` are compiled on the fly, cached, then served and reused for subsequent requests.
+func ServerWithFileServer(self *Server, pattern string, directory string) {
+	workspace := WorkspaceCreate()
+	WorkspaceWithTemporaryDirectory(workspace, self.temporaryDirectory)
+	WorkspaceWithNodeModulesDirectory(workspace, self.nodeModulesDirectory)
+
+	cache := map[string]func(props map[string]any) (string, error){}
+
+	//serveAssets := http.FileServer(http.Dir(strings.Join(directories, " ")))
+	serveAssets := http.FileServer(http.Dir(directory))
+
+	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, request *http.Request) {
+		fileNameBase, cutError := strings.CutPrefix(request.RequestURI, "?")
+		if !cutError {
+			fileNameBase, cutError = strings.CutPrefix(request.RequestURI, "&")
+		}
+
+		fileNameAbsolute, absoluteFileNameError := filepath.Abs(fmt.Sprintf("%s%s", directory, fileNameBase))
+		if nil != absoluteFileNameError {
+			ServerNotifyError(self, absoluteFileNameError)
+			return
+		}
+
+		if _, err := os.Stat(fileNameAbsolute); errors.Is(err, os.ErrNotExist) {
+			// path/to/whatever does not exist
+		}
+
+		if strings.HasSuffix(fileNameAbsolute, ".svelte") {
+			query, queryError := url.ParseQuery(request.RequestURI)
+			if nil != queryError {
+				ServerNotifyError(self, queryError)
+				return
+			}
+
+			var html string
+			var renderError error
+
+			cachedRender, found := cache[fileNameAbsolute]
+			if found {
+				ServerNotifyInformation(self, fmt.Sprintf("Cache hit for svelte component `%s`.", fileNameAbsolute))
+				html, renderError = cachedRender(map[string]any{
+					"query": query,
+				})
+			} else {
+				ServerNotifyInformation(self, fmt.Sprintf("Compiling svelte component `%s`...", fileNameAbsolute))
+				render, compileError := WorkspaceCompileSvelte(workspace, fileNameAbsolute)
+				cache[fileNameAbsolute] = render
+				if compileError != nil {
+					ServerNotifyError(self, compileError)
+					return
+				}
+				ServerNotifyInformation(
+					self, fmt.Sprintf("Svelte component `%s` has been compiled.", fileNameAbsolute),
+				)
+				html, renderError = render(map[string]any{
+					"query": query,
+				})
+			}
+
+			if nil != renderError {
+				ServerNotifyError(self, renderError)
+				return
+			}
+
+			header := writer.Header()
+
+			response := &Response{
+				server:                self,
+				writer:                &writer,
+				header:                &header,
+				statusCode:            200,
+				lockedStatusAndHeader: false,
+			}
+			Header(response, "content-type", "text/html")
+			Echo(response, html)
+			return
+		}
+
+		serveAssets.ServeHTTP(writer, request)
+	})
+}
+
+// ServerStart starts the server.
 func ServerStart(self *Server) error {
 	self.server = &http.Server{
 		Handler:        self.mux,
@@ -86,6 +192,7 @@ func ServerStart(self *Server) error {
 		ErrorLog:       self.errorLogger,
 		TLSConfig:      self.tlsConfiguration,
 	}
+
 	address := fmt.Sprintf("%s:%d", self.hostname, self.port)
 
 	self.informationLogger.Printf("Listening for requests at http://%s", address)
@@ -97,18 +204,16 @@ func ServerStart(self *Server) error {
 	return nil
 }
 
-// Handle server requests.
+// HandleFunc registers the handler function for the given pattern. If the given pattern conflicts, with one that is already registered, HandleFunc panics.
 func ServerOnRequest(
 	self *Server,
-	method string,
-	path string,
+	pattern string,
 	callback func(server *Server, request *Request, response *Response),
 ) {
-	pattern := fmt.Sprintf("%s %s", strings.ToUpper(method), path)
 	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, request *http.Request) {
 		requestLocal := Request{
-			server:  self,
-			request: request,
+			server:      self,
+			HttpRequest: request,
 		}
 
 		httpHeader := writer.Header()
@@ -125,8 +230,8 @@ func ServerOnRequest(
 }
 
 type Request struct {
-	server  *Server
-	request *http.Request
+	server      *Server
+	HttpRequest *http.Request
 }
 
 type Response struct {
@@ -137,31 +242,41 @@ type Response struct {
 	header                *http.Header
 }
 
-// Handler server information.
+// ServerOnInformation handles server information.
 func ServerOnInformation(self *Server, callback func(information string)) {
 	self.informationHandler = append(self.informationHandler, callback)
 }
 
-// Handler server errors.
+// ServerOnError handles server errors.
 func ServerOnError(self *Server, callback func(err error)) {
 	self.errorHandler = append(self.errorHandler, callback)
 }
 
-// Notify the server of some information.
+// ServerNotifyInformation notifies the server of some information.
 func ServerNotifyInformation(self *Server, information string) {
 	for _, listener := range self.informationHandler {
 		listener(information)
 	}
 }
 
-// Notify the server of an error.
+// ServerNotifyError notifies the server of an error.
 func ServerNotifyError(self *Server, err error) {
 	for _, listener := range self.errorHandler {
 		listener(err)
 	}
 }
 
-// Send the Status.
+// ServerNotifyInformation notifies the server of some information.
+func ServerLogInformation(self *Server, information string) {
+	self.informationLogger.Println(information)
+}
+
+// ServerNotifyError notifies the server of an error.
+func ServerLogError(self *Server, err error) {
+	self.errorLogger.Println(err.Error())
+}
+
+// Status sets the status code.
 //
 // The status message will be inferred automatically based on the code.
 //
@@ -178,7 +293,7 @@ func Status(self *Response, code int) {
 	self.statusCode = code
 }
 
-// Send a Header.
+// Header sets a header field.
 //
 // If the status has not been sent already, a default "200 OK" status will be sent immediately.
 //
@@ -194,7 +309,7 @@ func Header(self *Response, key string, value string) {
 	self.header.Set(key, value)
 }
 
-// Send binary safe content.
+// Send sends binary safe content.
 //
 // If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
 //
@@ -216,9 +331,7 @@ func Send(self *Response, value []byte) {
 	}
 }
 
-// Send utf-8 safe content.
-//
-// Echo formats according to a format specifier.
+// Echo sends utf-8 safe content.
 //
 // If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
 //
@@ -227,12 +340,13 @@ func Send(self *Response, value []byte) {
 // You can retrieve this error using ServerOnError.
 //
 // See fmt.Sprintf.
-func Echo(self *Response, format string, a ...any) {
-	Send(self, []byte(fmt.Sprintf(format, a...)))
+func Echo(self *Response, content string) {
+	Send(self, []byte(content))
 }
 
+// Accept returns an error if the incoming request does not specify a content-type header of accepted mimes.
 func Accept(self *Request, acceptedMimes ...string) error {
-	requestedMime := self.request.Header.Get("content-type")
+	requestedMime := self.HttpRequest.Header.Get("content-type")
 	for _, acceptedMime := range acceptedMimes {
 		if acceptedMime == "*" || strings.HasPrefix(requestedMime, acceptedMime) {
 			return nil

@@ -4,11 +4,6 @@ import (
 	v8 "rogchap.com/v8go"
 )
 
-const eol = byte('\n')
-const space = byte(' ')
-const colon = byte(':')
-const cr = byte('\r')
-const lf = byte('\n')
 const kb = 1024
 const mb = 1024 * kb
 const gb = 1024 * mb
@@ -30,3 +25,4 @@ var boot = []byte("import { compile } from 'svelte/compiler'\n\nconst source = e
 var isolateGlobal = v8.NewIsolate()
 var globalGlobal = v8.NewObjectTemplate(isolateGlobal)
 var contextGlobal = v8.NewContext(isolateGlobal, globalGlobal)
+var contextGlobalRequirementsAdded = false
