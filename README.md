@@ -4,6 +4,4 @@
 
 A minimalistic opinionated web server that uses Svelte as a rendering template.
 
-Let's bring back shared hosts, but for Go and Svelte.
-
 ## ⚠️ Work in progress ⚠️
