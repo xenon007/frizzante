@@ -55,7 +55,7 @@ func ServerCreate() *Server {
 	}
 }
 
-// Set the server port.
+// ServerWithInterface sets the server port.
 func ServerWithInterface(self *Server, hostname string) {
 	self.hostname = hostname
 }
@@ -308,7 +308,7 @@ func ServerStart(self *Server) error {
 	return nil
 }
 
-// HandleFunc registers the handler function for the given pattern. If the given pattern conflicts, with one that is already registered, HandleFunc panics.
+// ServerOnRequest registers the handler function for the given pattern. If the given pattern conflicts, with one that is already registered, HandleFunc panics.
 func ServerOnRequest(
 	self *Server,
 	pattern string,
@@ -370,12 +370,12 @@ func ServerNotifyError(self *Server, err error) {
 	}
 }
 
-// ServerNotifyInformation notifies the server of some information.
+// ServerLogInformation notifies the server of some information.
 func ServerLogInformation(self *Server, information string) {
 	self.informationLogger.Println(information)
 }
 
-// ServerNotifyError notifies the server of an error.
+// ServerLogError notifies the server of an error.
 func ServerLogError(self *Server, err error) {
 	self.errorLogger.Println(err.Error())
 }
