@@ -10,24 +10,24 @@ import (
 )
 import v8 "rogchap.com/v8go"
 
-type Workspace struct {
+type Svelte struct {
 	NodeModulesDirectory string
 	TemporaryDirectory   string
 	V8Context            *v8.Context
 }
 
-func WorkspaceCreate() *Workspace {
-	return &Workspace{
+func SvelteCreate() *Svelte {
+	return &Svelte{
 		NodeModulesDirectory: "",
 		TemporaryDirectory:   "",
 	}
 }
 
-func WorkspaceWithNodeModulesDirectory(self *Workspace, nodeModulesDirectory string) {
+func SvelteWithNodeModulesDirectory(self *Svelte, nodeModulesDirectory string) {
 	self.NodeModulesDirectory = nodeModulesDirectory
 }
 
-func WorkspaceWithTemporaryDirectory(self *Workspace, temporaryDirectory string) {
+func SvelteWithTemporaryDirectory(self *Svelte, temporaryDirectory string) {
 	self.TemporaryDirectory = temporaryDirectory
 }
 
@@ -36,7 +36,7 @@ type Bundle struct {
 	Contents []byte
 }
 
-func WorkspaceBundle(self *Workspace, includeRequirements bool, source []byte) (*Bundle, error) {
+func SvelteBundle(self *Svelte, includeRequirements bool, source []byte) (*Bundle, error) {
 	dirName := self.TemporaryDirectory
 	fileName := dirName + "/" + uuid.NewString() + ".js"
 
@@ -103,12 +103,12 @@ func WorkspaceBundle(self *Workspace, includeRequirements bool, source []byte) (
 
 var regexSsr, regexSsrError = regexp.Compile(`var \w+[\s\n]*=[\s\n]*Component[\s\n]*;?[\s\n]*export[\s\n]+{[\s\n]*\w+[\s\n]+as[\s\n]+default[\s\n]*}[\s\n]*;?`)
 
-func WorkspaceCompileSvelte(self *Workspace, svelteFileName string) (func(props map[string]any) (string, error), error) {
+func SvelteCompile(self *Svelte, svelteFileName string) (func(props map[string]any) (string, error), error) {
 	if regexSsrError != nil {
 		return nil, regexSsrError
 	}
 
-	bundle, bundleError := WorkspaceBundle(self, true, boot)
+	bundle, bundleError := SvelteBundle(self, true, boot)
 	if bundleError != nil {
 		return nil, bundleError
 	}
@@ -146,7 +146,7 @@ func WorkspaceCompileSvelte(self *Workspace, svelteFileName string) (func(props 
 	compiledScript := compileResult.String()
 
 	includeRequirements := !contextGlobalRequirementsAdded
-	ssrBundle, renderBundleError := WorkspaceBundle(self, includeRequirements, []byte(compiledScript))
+	ssrBundle, renderBundleError := SvelteBundle(self, includeRequirements, []byte(compiledScript))
 	if !contextGlobalRequirementsAdded {
 		contextGlobalRequirementsAdded = true
 	}

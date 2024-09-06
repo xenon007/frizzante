@@ -102,7 +102,7 @@ func ServerWithNodeModulesDirectory(self *Server, nodeModulesDirectory string) {
 
 type RenderOptions struct {
 	server    *Server
-	workspace *Workspace
+	workspace *Svelte
 	writer    *http.ResponseWriter
 	cache     map[string]func(props map[string]any) (string, error)
 	fileName  string
@@ -167,7 +167,7 @@ func render(options *RenderOptions) {
 			options.server, fmt.Sprintf("Compiling svelte component `%s`...", options.fileName),
 		)
 
-		runComponent, compileError := WorkspaceCompileSvelte(options.workspace, options.fileName)
+		runComponent, compileError := SvelteCompile(options.workspace, options.fileName)
 
 		options.cache[options.fileName] = runComponent
 
@@ -236,9 +236,9 @@ func index(
 //
 // Files ending with `.svelte` are compiled on the fly, cached, then served and reused for subsequent requests.
 func ServerWithFileServer(self *Server, pattern string, directory string) {
-	workspace := WorkspaceCreate()
-	WorkspaceWithTemporaryDirectory(workspace, self.temporaryDirectory)
-	WorkspaceWithNodeModulesDirectory(workspace, self.nodeModulesDirectory)
+	workspace := SvelteCreate()
+	SvelteWithTemporaryDirectory(workspace, self.temporaryDirectory)
+	SvelteWithNodeModulesDirectory(workspace, self.nodeModulesDirectory)
 
 	cache := map[string]func(props map[string]any) (string, error){}
 
