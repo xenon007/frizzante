@@ -55,8 +55,8 @@ func ServerCreate() *Server {
 	}
 }
 
-// ServerWithInterface sets the server port.
-func ServerWithInterface(self *Server, hostname string) {
+// ServerWithHostname sets the server hostname.
+func ServerWithHostname(self *Server, hostname string) {
 	self.hostname = hostname
 }
 
@@ -232,10 +232,10 @@ func index(
 	return location
 }
 
-// ServerWithFileServer creates a request handler that serves files from the local filesystem directories.
+// ServerWithSvelteDirectory creates a request handler that serves files from the local filesystem directories.
 //
 // Files ending with `.svelte` are compiled on the fly, cached, then served and reused for subsequent requests.
-func ServerWithFileServer(self *Server, pattern string, directory string) {
+func ServerWithSvelteDirectory(self *Server, pattern string, directory string) {
 	workspace := SvelteCreate()
 	SvelteWithTemporaryDirectory(workspace, self.temporaryDirectory)
 	SvelteWithNodeModulesDirectory(workspace, self.nodeModulesDirectory)
