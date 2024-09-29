@@ -247,10 +247,12 @@ func ServerWithSvelteDirectory(self *Server, pattern string, directory string) {
 	filer := http.FileServer(http.Dir(www))
 
 	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, request *http.Request) {
-		path, cutError := strings.CutPrefix(request.RequestURI, "?")
-		if !cutError {
-			path, cutError = strings.CutPrefix(request.RequestURI, "&")
+		parts := strings.Split(request.RequestURI, "?")
+		if 1 == len(parts) {
+			parts = strings.Split(request.RequestURI, "&")
 		}
+		path := parts[0]
+		queryString := parts[1]
 
 		fileName := fmt.Sprintf("%s%s", www, path)
 
@@ -264,7 +266,7 @@ func ServerWithSvelteDirectory(self *Server, pattern string, directory string) {
 			}
 
 			if strings.HasSuffix(fileName, ".svelte") {
-				query, queryError := url.ParseQuery(request.RequestURI)
+				query, queryError := url.ParseQuery(queryString)
 				if nil != queryError {
 					ServerNotifyError(self, queryError)
 					return
