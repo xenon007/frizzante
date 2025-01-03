@@ -7,51 +7,46 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
-import v8 "rogchap.com/v8go"
-
 type Server struct {
-	hostname             string
-	port                 int
-	server               *http.Server
-	mux                  *http.ServeMux
-	sessions             map[string]*net.Conn
-	readTimeout          time.Duration
-	writeTimeout         time.Duration
-	maxHeaderBytes       int
-	errorLogger          *log.Logger
-	informationLogger    *log.Logger
-	tlsConfiguration     *tls.Config
-	informationHandler   []func(string)
-	errorHandler         []func(error)
-	temporaryDirectory   string
-	nodeModulesDirectory string
+	hostname           string
+	port               int
+	server             *http.Server
+	mux                *http.ServeMux
+	sessions           map[string]*net.Conn
+	readTimeout        time.Duration
+	writeTimeout       time.Duration
+	maxHeaderBytes     int
+	errorLogger        *log.Logger
+	informationLogger  *log.Logger
+	tlsConfiguration   *tls.Config
+	informationHandler []func(string)
+	errorHandler       []func(error)
+	temporaryDirectory string
 }
 
 // ServerCreate creates a server.
 func ServerCreate() *Server {
 	return &Server{
-		hostname:             "",
-		port:                 80,
-		server:               nil,
-		mux:                  http.NewServeMux(),
-		sessions:             map[string]*net.Conn{},
-		readTimeout:          10 * time.Second,
-		writeTimeout:         10 * time.Second,
-		maxHeaderBytes:       3 * mb,
-		errorLogger:          log.Default(),
-		informationLogger:    log.Default(),
-		tlsConfiguration:     nil,
-		informationHandler:   []func(string){},
-		errorHandler:         []func(error){},
-		temporaryDirectory:   ".temp",
-		nodeModulesDirectory: "node_modules",
+		hostname:           "",
+		port:               80,
+		server:             nil,
+		mux:                http.NewServeMux(),
+		sessions:           map[string]*net.Conn{},
+		readTimeout:        10 * time.Second,
+		writeTimeout:       10 * time.Second,
+		maxHeaderBytes:     3 * mb,
+		errorLogger:        log.Default(),
+		informationLogger:  log.Default(),
+		tlsConfiguration:   nil,
+		informationHandler: []func(string){},
+		errorHandler:       []func(error){},
+		temporaryDirectory: ".temp",
 	}
 }
 
@@ -85,6 +80,11 @@ func ServerWithErrorLogger(self *Server, errorLogger *log.Logger) {
 	self.errorLogger = errorLogger
 }
 
+// ServerWithInformationLogger sets the information logger.
+func ServerWithInformationLogger(self *Server, informationLogger *log.Logger) {
+	self.informationLogger = informationLogger
+}
+
 // ServerWithTlsConfiguration sets the tls configuration.
 func ServerWithTlsConfiguration(self *Server, tlsConfiguration *tls.Config) {
 	self.tlsConfiguration = tlsConfiguration
@@ -95,197 +95,108 @@ func ServerWithTemporaryDirectory(self *Server, temporaryDirectory string) {
 	self.temporaryDirectory = temporaryDirectory
 }
 
-// ServerWithNodeModulesDirectory sets the location of the node_modules directory required by the svelte compiler.
-func ServerWithNodeModulesDirectory(self *Server, nodeModulesDirectory string) {
-	self.nodeModulesDirectory = nodeModulesDirectory
-}
+// ServerSetTemporaryFile sets a temporary file.
+func ServerSetTemporaryFile(self *Server, id string, contents string) error {
+	if strings.Contains(id, "./") {
+		return fmt.Errorf("invalid substring `./` detected in temporary file id `%s`", id)
+	}
 
-type RenderOptions struct {
-	server    *Server
-	workspace *Svelte
-	writer    *http.ResponseWriter
-	cache     map[string]func(props map[string]any) (string, error)
-	fileName  string
-	query     *url.Values
-}
+	if strings.Contains(id, "../") {
+		return fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id)
+	}
 
-func convertSliceToV8Object(items []string) (*v8.ObjectTemplate, error) {
-	objectTemplate := v8.NewObjectTemplate(isolateGlobal)
-	for key, value := range items {
-		v8Value, v8ValueError := v8.NewValue(isolateGlobal, value)
-		if nil != v8ValueError {
-			return nil, v8ValueError
-		}
-		templateSetError := objectTemplate.Set(strconv.Itoa(key), v8Value)
-		if templateSetError != nil {
-			return nil, v8ValueError
+	if !exists(self.temporaryDirectory) {
+		mkdirError := os.MkdirAll(self.temporaryDirectory, os.ModePerm)
+		if mkdirError != nil {
+			return mkdirError
 		}
 	}
 
-	return objectTemplate, nil
-}
+	fileName := self.temporaryDirectory
+	if !strings.HasSuffix(fileName, "/") && !strings.HasPrefix(id, "/") {
+		fileName += "/"
+	}
+	fileName += id
 
-func convertUrlValuesToV8Object(urlValues *url.Values) (*v8.ObjectTemplate, error) {
-	objectTemplate := v8.NewObjectTemplate(isolateGlobal)
-	for key, value := range *urlValues {
-		v8Value, v8ValueError := convertSliceToV8Object(value)
-		if nil != v8ValueError {
-			return nil, v8ValueError
-		}
-		templateSetError := objectTemplate.Set(key, v8Value)
-		if templateSetError != nil {
-			return nil, templateSetError
+	directory := filepath.Dir(fileName)
+	if !exists(directory) {
+		mkdirError := os.MkdirAll(directory, os.ModePerm)
+		if mkdirError != nil {
+			return mkdirError
 		}
 	}
 
-	return objectTemplate, nil
-}
+	var file *os.File
 
-// render compiles, caches and serves svelte files.
-func render(options *RenderOptions) {
-	var html string
-	var renderError error
-
-	runCachedComponent, found := options.cache[options.fileName]
-	if found {
-		ServerNotifyInformation(
-			options.server, fmt.Sprintf("Cache hit for svelte component `%s`.", options.fileName),
-		)
-
-		query, queryError := convertUrlValuesToV8Object(options.query)
-
-		if nil != queryError {
-			ServerNotifyError(options.server, queryError)
-			return
+	if !ServerHasTemporaryFile(self, id) {
+		fileLocal, err := os.Create(fileName)
+		if err != nil {
+			return err
 		}
-
-		html, renderError = runCachedComponent(map[string]any{
-			"query": query,
-		})
+		file = fileLocal
 	} else {
-		ServerNotifyInformation(
-			options.server, fmt.Sprintf("Compiling svelte component `%s`...", options.fileName),
-		)
-
-		runComponent, compileError := SvelteCompile(options.workspace, options.fileName)
-
-		options.cache[options.fileName] = runComponent
-
-		if nil != compileError {
-			ServerNotifyError(options.server, compileError)
-			return
+		fileLocal, openError := os.Open(fileName)
+		if openError != nil {
+			return openError
 		}
-
-		ServerNotifyInformation(
-			options.server, fmt.Sprintf("Svelte component `%s` has been compiled.", options.fileName),
-		)
-
-		query, queryError := convertUrlValuesToV8Object(options.query)
-
-		if nil != queryError {
-			ServerNotifyError(options.server, queryError)
-			return
-		}
-
-		html, renderError = runComponent(map[string]any{
-			"query": query,
-		})
+		file = fileLocal
 	}
 
-	if nil != renderError {
-		ServerNotifyError(options.server, renderError)
-		return
+	_, writeError := file.WriteString(contents)
+	if writeError != nil {
+		return writeError
 	}
 
-	header := (*options.writer).Header()
-
-	response := &Response{
-		server:                options.server,
-		writer:                options.writer,
-		header:                &header,
-		statusCode:            200,
-		lockedStatusAndHeader: false,
+	closeError := file.Close()
+	if closeError != nil {
+		return closeError
 	}
 
-	Header(response, "content-type", "text/html")
-	Echo(response, html)
+	return nil
 }
 
-// index checks  if the directory contains an index.svelte file and tries to serve it, if the index.svelte file is not found, it then checks for index.html and tries to server that instead and returns true, otherwise false.
-func index(
-	writer *http.ResponseWriter,
-	request *http.Request,
-	www string,
-) string {
-	path := strings.TrimRight(request.RequestURI, "/")
-
-	// index.svelte
-	location := path + "/index.svelte"
-	if !exists(www + location) {
-		// index.html
-		location = path + "/index.html"
-		if !exists(www + location) {
-			return ""
-		}
+// ServerGetTemporaryFile gets a temporary file.
+func ServerGetTemporaryFile(self *Server, id string) (string, error) {
+	if strings.Contains(id, "./") {
+		return "", fmt.Errorf("invalid substring `./` detected in temporary file id `%s`", id)
 	}
 
-	return location
+	if strings.Contains(id, "../") {
+		return "", fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id)
+	}
+
+	fileName := self.temporaryDirectory
+	if !strings.HasSuffix(fileName, "/") && !strings.HasPrefix(id, "/") {
+		fileName += "/"
+	}
+	fileName += id
+	contents, err := os.ReadFile(fileName)
+	if err != nil {
+		return "", err
+	}
+	return string(contents), nil
 }
 
-// ServerWithSvelteDirectory creates a request handler that serves files from the local filesystem directories.
-//
-// Files ending with `.svelte` are compiled on the fly, cached, then served and reused for subsequent requests.
-func ServerWithSvelteDirectory(self *Server, pattern string, directory string) {
-	workspace := SvelteCreate()
-	SvelteWithTemporaryDirectory(workspace, self.temporaryDirectory)
-	SvelteWithNodeModulesDirectory(workspace, self.nodeModulesDirectory)
+// ServerHasTemporaryFile checks if a temporary file exists.
+func ServerHasTemporaryFile(self *Server, id string) bool {
+	if strings.Contains(id, "./") || strings.Contains(id, "../") {
+		return false
+	}
 
-	cache := map[string]func(props map[string]any) (string, error){}
+	fileName := self.temporaryDirectory
+	if !strings.HasSuffix(fileName, "/") && !strings.HasPrefix(id, "/") {
+		fileName += "/"
+	}
+	fileName += id
+	return exists(fileName)
+}
 
-	www := strings.TrimRight(directory, "/")
-
-	filer := http.FileServer(http.Dir(www))
-
-	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, request *http.Request) {
-		parts := strings.Split(request.RequestURI, "?")
-		if 1 == len(parts) {
-			parts = strings.Split(request.RequestURI, "&")
-		}
-		path := parts[0]
-		queryString := parts[1]
-
-		fileName := fmt.Sprintf("%s%s", www, path)
-
-		stat, statError := os.Stat(fileName)
-		fileExists := nil == statError || !errors.Is(statError, os.ErrNotExist)
-
-		if fileExists {
-			if stat.IsDir() {
-				path = index(&writer, request, www)
-				fileName = fmt.Sprintf("%s%s", www, path)
-			}
-
-			if strings.HasSuffix(fileName, ".svelte") {
-				query, queryError := url.ParseQuery(queryString)
-				if nil != queryError {
-					ServerNotifyError(self, queryError)
-					return
-				}
-				options := &RenderOptions{
-					server:    self,
-					writer:    &writer,
-					workspace: workspace,
-					query:     &query,
-					fileName:  fileName,
-					cache:     cache,
-				}
-				render(options)
-				return
-			}
-		}
-
-		filer.ServeHTTP(writer, request)
-	})
+// ServerClearTemporaryDirectory clears the temporary directory.
+func ServerClearTemporaryDirectory(self *Server) {
+	err := os.RemoveAll(self.temporaryDirectory)
+	if err != nil {
+		ServerNotifyError(self, err)
+	}
 }
 
 // ServerStart starts the server.
@@ -372,12 +283,12 @@ func ServerNotifyError(self *Server, err error) {
 	}
 }
 
-// ServerLogInformation notifies the server of some information.
+// ServerLogInformation logs information using the server's logger.
 func ServerLogInformation(self *Server, information string) {
 	self.informationLogger.Println(information)
 }
 
-// ServerLogError notifies the server of an error.
+// ServerLogError logs an error using the server's logger.
 func ServerLogError(self *Server, err error) {
 	self.errorLogger.Println(err.Error())
 }
