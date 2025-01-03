@@ -1,204 +1,136 @@
 package frizzante
 
 import (
-	"fmt"
-	"github.com/evanw/esbuild/pkg/api"
-	"github.com/google/uuid"
-	"os"
-	"regexp"
+	"rogchap.com/v8go"
 	"strings"
 )
-import v8 "rogchap.com/v8go"
 
-type Svelte struct {
-	NodeModulesDirectory string
-	TemporaryDirectory   string
-	V8Context            *v8.Context
-}
+func Svelte(response *Response, id string, source string) {
+	server := response.server
+	js := ""
+	css := ""
 
-func SvelteCreate() *Svelte {
-	return &Svelte{
-		NodeModulesDirectory: "",
-		TemporaryDirectory:   "",
+	jsBundleName := id
+	if !strings.HasSuffix(id, "/") {
+		jsBundleName += "/"
 	}
-}
+	jsBundleName += "bundle.js"
 
-func SvelteWithNodeModulesDirectory(self *Svelte, nodeModulesDirectory string) {
-	self.NodeModulesDirectory = nodeModulesDirectory
-}
-
-func SvelteWithTemporaryDirectory(self *Svelte, temporaryDirectory string) {
-	self.TemporaryDirectory = temporaryDirectory
-}
-
-type Bundle struct {
-	FileName string
-	Contents []byte
-}
-
-func SvelteBundle(self *Svelte, includeRequirements bool, source []byte) (*Bundle, error) {
-	dirName := self.TemporaryDirectory
-	fileName := dirName + "/" + uuid.NewString() + ".js"
-
-	mkdirAllError := os.MkdirAll(dirName, 0777)
-	if mkdirAllError != nil {
-		return nil, mkdirAllError
+	cssBundleName := id
+	if !strings.HasSuffix(id, "/") {
+		cssBundleName += "/"
 	}
+	cssBundleName += "bundle.css"
 
-	err := os.WriteFile(fileName, source, 0777)
-
-	if err != nil {
-		return nil, err
-	}
-
-	buildResult := api.Build(api.BuildOptions{
-		Bundle:      true,
-		Format:      api.FormatESModule,
-		EntryPoints: []string{fileName},
-		NodePaths:   []string{self.NodeModulesDirectory},
-	})
-
-	for _, buildError := range buildResult.Errors {
-		builder := strings.Builder{}
-
-		builder.WriteString(buildError.Text)
-		builder.WriteString("\n")
-		builder.WriteString(buildError.Location.LineText)
-		builder.WriteString("\n")
-		builder.WriteString("(")
-		builder.WriteString(string(rune(buildError.Location.Line)))
-		builder.WriteString(":")
-		builder.WriteString(string(rune(buildError.Location.Column)))
-		builder.WriteString(")")
-		builder.WriteString("\n")
-		builder.WriteString(buildError.Location.File)
-
-		return nil, fmt.Errorf(builder.String())
-	}
-
-	for _, file := range buildResult.OutputFiles {
-		removeError := os.Remove(fileName)
-		if removeError != nil {
-			return nil, removeError
+	if !ServerHasTemporaryFile(server, jsBundleName) ||
+		!ServerHasTemporaryFile(server, cssBundleName) {
+		secondStepScript := ""
+		firstStepScript, firstStepScriptError := Bundle(`
+				import { compile } from 'svelte/compiler'
+				const result = compile(source(),{ generate: generate() })
+				js(result.js?.code??'')
+				css(result.css?.code??'')
+			`)
+		if firstStepScriptError != nil {
+			ServerNotifyError(server, firstStepScriptError)
+			return
 		}
 
-		if !includeRequirements {
-			return &Bundle{Contents: file.Contents, FileName: fileName}, nil
+		_, destroy, runError := JavaScript(firstStepScript, map[string]v8go.FunctionCallback{
+			"structuredClone": structuredClone,
+			"source": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+				value, valueError := v8go.NewValue(info.Context().Isolate(), source)
+				if valueError != nil {
+					ServerNotifyError(server, valueError)
+					return nil
+				}
+				return value
+			},
+			"generate": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+				value, valueError := v8go.NewValue(info.Context().Isolate(), "server")
+				if valueError != nil {
+					ServerNotifyError(server, valueError)
+					return nil
+				}
+				return value
+			},
+			"js": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+				if len(info.Args()) > 0 {
+					secondStepScript = info.Args()[0].String()
+				}
+				return nil
+			},
+			"css": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+				if len(info.Args()) > 0 {
+					css = info.Args()[0].String()
+				}
+				return nil
+			},
+		})
+		if runError != nil {
+			ServerNotifyError(server, runError)
+			return
 		}
 
-		stringifiedContents := string(file.Contents)
-		replaced := strings.Replace(stringifiedContents, "\"use strict\";", "", 1)
-		concat := requirements + replaced
+		defer destroy()
 
-		return &Bundle{Contents: []byte(concat), FileName: fileName}, nil
-	}
+		secondStepScriptFixed := strings.Replace(secondStepScript, "export default function", "function", 1)
+		secondStepScriptFixed += `
+			const payload = { out: '' }
+			_unknown_(payload)
+			output(payload.out)
+			`
 
-	removeError := os.Remove(fileName)
-	if removeError != nil {
-		return nil, removeError
-	}
-
-	return nil, fmt.Errorf("could not build input file")
-}
-
-var regexSsr, regexSsrError = regexp.Compile(`var \w+[\s\n]*=[\s\n]*Component[\s\n]*;?[\s\n]*export[\s\n]+{[\s\n]*\w+[\s\n]+as[\s\n]+default[\s\n]*}[\s\n]*;?`)
-
-func SvelteCompile(self *Svelte, svelteFileName string) (func(props map[string]any) (string, error), error) {
-	if regexSsrError != nil {
-		return nil, regexSsrError
-	}
-
-	bundle, bundleError := SvelteBundle(self, true, boot)
-	if bundleError != nil {
-		return nil, bundleError
-	}
-	isoLocal := v8.NewIsolate()
-
-	externGetArgs := v8.NewFunctionTemplate(isoLocal, func(info *v8.FunctionCallbackInfo) *v8.Value {
-		indexContents, indexError := os.ReadFile(svelteFileName)
-		if indexError != nil {
-			return nil
+		thirdStepScript, thirdStepScriptError := Bundle(secondStepScriptFixed)
+		if thirdStepScriptError != nil {
+			ServerNotifyError(server, thirdStepScriptError)
+			return
 		}
 
-		value, valueError := v8.NewValue(isoLocal, string(indexContents))
-		if valueError != nil {
-			return nil
+		js = thirdStepScript
+
+		setTempJsError := ServerSetTemporaryFile(server, jsBundleName, thirdStepScript)
+		if setTempJsError != nil {
+			ServerNotifyError(server, setTempJsError)
+			return
 		}
 
-		return value
-	})
+		setTempCssError := ServerSetTemporaryFile(server, cssBundleName, css)
+		if setTempCssError != nil {
+			ServerNotifyError(server, setTempCssError)
+			return
+		}
+	} else {
+		thirdStepScript, getTempJsError := ServerGetTemporaryFile(server, jsBundleName)
+		if getTempJsError != nil {
+			ServerNotifyError(server, getTempJsError)
+			return
+		}
+		js = thirdStepScript
 
-	globalLocal := v8.NewObjectTemplate(isoLocal)
-	externGetArgsError := globalLocal.Set("externGetArgs", externGetArgs)
-	if externGetArgsError != nil {
-		return nil, externGetArgsError
+		cssLocal, getTempCssError := ServerGetTemporaryFile(server, cssBundleName)
+		if getTempCssError != nil {
+			ServerNotifyError(server, getTempCssError)
+			return
+		}
+		css = cssLocal
 	}
 
-	contextLocal := v8.NewContext(isoLocal, globalLocal)
-
-	script := string(bundle.Contents)
-
-	compileResult, runError := contextLocal.RunScript(script, "compile.js")
-	if runError != nil {
-		return nil, runError
-	}
-
-	compiledScript := compileResult.String()
-
-	includeRequirements := !contextGlobalRequirementsAdded
-	ssrBundle, renderBundleError := SvelteBundle(self, includeRequirements, []byte(compiledScript))
-	if !contextGlobalRequirementsAdded {
-		contextGlobalRequirementsAdded = true
-	}
-	if renderBundleError != nil {
-		return nil, renderBundleError
-	}
-
-	ssrScript := string(regexSsr.ReplaceAll(ssrBundle.Contents, []byte("Component.render")))
-
-	renderFunction, ssrScriptError := contextGlobal.RunScript(ssrScript, svelteFileName)
-	if ssrScriptError != nil {
-		return nil, ssrScriptError
-	}
-
-	function, functionError := renderFunction.AsFunction()
-
-	if functionError != nil {
-		return nil, functionError
-	}
-
-	return func(props map[string]any) (string, error) {
-		objectTemplate := v8.NewObjectTemplate(isolateGlobal)
-		for key, value := range props {
-			err := objectTemplate.Set(key, value)
-			if err != nil {
-				return "", err
+	html := ""
+	_, destroyRender, renderError := JavaScript(js, map[string]v8go.FunctionCallback{
+		"output": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			args := info.Args()
+			if len(args) > 0 {
+				html = args[0].String()
 			}
-		}
-
-		instance, instanceError := objectTemplate.NewInstance(contextGlobal)
-		if instanceError != nil {
-			return "", instanceError
-		}
-		returnValue, callError := function.Call(contextGlobal.Global(), instance)
-		if callError != nil {
-			return "", callError
-		}
-
-		output, outputError := returnValue.AsObject()
-
-		if outputError != nil {
-			return "", outputError
-		}
-
-		htmlValue, htmlValueError := output.Get("html")
-
-		if htmlValueError != nil {
-			return "", htmlValueError
-		}
-
-		html := htmlValue.String()
-
-		return html, nil
-	}, nil
+			return nil
+		},
+	})
+	if renderError != nil {
+		ServerNotifyError(server, renderError)
+		return
+	}
+	defer destroyRender()
+	Header(response, "Content-Type", "text/html")
+	Echo(response, html)
 }
