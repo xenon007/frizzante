@@ -83,6 +83,42 @@ func JavaScriptDestroy(js *JavaScriptContext) {
 	js.isolate.Dispose()
 }
 
+func pagesPlugin(server *Server, id string) api.Plugin {
+	return api.Plugin{
+		Name: "pages",
+		Setup: func(build api.PluginBuild) {
+			build.OnResolve(
+				api.OnResolveOptions{Filter: `^\$pages\/`},
+				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+					path := filepath.Join(args.ResolveDir, args.Path)
+
+					return api.OnResolveResult{
+						Path:      path,
+						Namespace: "pages-ns",
+					}, nil
+				},
+			)
+
+			build.OnLoad(
+				api.OnLoadOptions{Filter: `.*`, Namespace: "pages-ns"},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, readError := os.ReadFile(args.Path)
+					if readError != nil {
+						return api.OnLoadResult{}, readError
+					}
+
+					js, _ := SvelteCompile(server, args.Path, false, string(contents))
+
+					return api.OnLoadResult{
+						Contents: &js,
+						Loader:   api.LoaderJS,
+					}, nil
+				},
+			)
+		},
+	}
+}
+
 func componentsPlugin(server *Server, id string) api.Plugin {
 	return api.Plugin{
 		Name: "svelte",
@@ -168,6 +204,7 @@ func Bundle(server *Server, id string, source string) (string, error) {
 			".svelte": api.LoaderText,
 		},
 		Plugins: []api.Plugin{
+			pagesPlugin(server, id),
 			componentsPlugin(server, id),
 			scriptsPlugin(server, id),
 		},
