@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
 	"os"
+	"path/filepath"
+
+	//"os"
 	"rogchap.com/v8go"
 )
 
@@ -81,19 +84,56 @@ func JavaScriptDestroy(js *JavaScriptContext) {
 	js.isolate.Dispose()
 }
 
-func Bundle(source string) (string, error) {
-	cwd, wdError := os.Getwd()
-	if wdError != nil {
-		return "", wdError
-	}
-
+func Bundle(server *Server, id string, source string) (string, error) {
 	result := api.Build(api.BuildOptions{
 		Bundle: true,
 		Format: api.FormatESModule,
 		Write:  false,
 		Stdin: &api.StdinOptions{
 			Contents:   source,
-			ResolveDir: cwd,
+			ResolveDir: server.uiDirectory,
+		},
+		Loader: map[string]api.Loader{
+			".svelte": api.LoaderText,
+		},
+		Plugins: []api.Plugin{
+			api.Plugin{
+				Name: "svelte",
+				Setup: func(build api.PluginBuild) {
+					build.OnResolve(
+						api.OnResolveOptions{Filter: `.svelte$`},
+						func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+							importer := args.Importer
+
+							if "<stdin>" == importer {
+								importer = filepath.Dir(id)
+							}
+
+							return api.OnResolveResult{
+								Path:      filepath.Join(args.ResolveDir, importer, args.Path),
+								Namespace: "svelte-ns",
+							}, nil
+						},
+					)
+
+					build.OnLoad(
+						api.OnLoadOptions{Filter: `.*`, Namespace: "svelte-ns"},
+						func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+							contents, readError := os.ReadFile(args.Path)
+							if readError != nil {
+								return api.OnLoadResult{}, readError
+							}
+
+							js, _ := SvelteCompile(server, args.Path, false, string(contents))
+
+							return api.OnLoadResult{
+								Contents: &js,
+								Loader:   api.LoaderJS,
+							}, nil
+						},
+					)
+				},
+			},
 		},
 	})
 

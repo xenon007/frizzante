@@ -6,16 +6,15 @@ import (
 	"strings"
 )
 
-// Svelte renders and echos svelte code.
+// SvelteCompile compiles svelte code.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func Svelte(response *Response, id string, source string) {
+func SvelteCompile(server *Server, id string, fix bool, source string) (string, string) {
 	if len(id) > 255 {
-		ServerNotifyError(response.server, fmt.Errorf("page id is too long"))
-		return
+		ServerNotifyError(server, fmt.Errorf("page id is too long"))
+		return "", ""
 	}
 
-	server := response.server
 	js := ""
 	css := ""
 
@@ -34,7 +33,7 @@ func Svelte(response *Response, id string, source string) {
 	if !ServerHasTemporaryFile(server, jsBundleName) ||
 		!ServerHasTemporaryFile(server, cssBundleName) {
 		secondStepScript := ""
-		firstStepScript, firstStepScriptError := Bundle(`
+		firstStepScript, firstStepScriptError := Bundle(server, id, `
 				import { compile } from 'svelte/compiler'
 				const result = compile(source(),{ generate: generate() })
 				js(result.js?.code??'')
@@ -42,7 +41,7 @@ func Svelte(response *Response, id string, source string) {
 			`)
 		if firstStepScriptError != nil {
 			ServerNotifyError(server, firstStepScriptError)
-			return
+			return "", ""
 		}
 
 		_, destroy, runError := JavaScript(firstStepScript, map[string]v8go.FunctionCallback{
@@ -78,23 +77,25 @@ func Svelte(response *Response, id string, source string) {
 		})
 		if runError != nil {
 			ServerNotifyError(server, runError)
-			return
+			return "", ""
 		}
 
 		defer destroy()
 
-		secondStepScriptFixed := strings.Replace(secondStepScript, "export default function", "function", 1)
-		secondStepScriptFixed += `
+		if fix {
+			secondStepScript = strings.Replace(secondStepScript, "export default function", "function", 1)
+			secondStepScript += `
 			const payload = { head: '', out: '', body: '' }
 			_unknown_(payload)
 			head(payload.head)
 			out(payload.out)
 			`
+		}
 
-		thirdStepScript, thirdStepScriptError := Bundle(secondStepScriptFixed)
+		thirdStepScript, thirdStepScriptError := Bundle(server, id, secondStepScript)
 		if thirdStepScriptError != nil {
 			ServerNotifyError(server, thirdStepScriptError)
-			return
+			return "", ""
 		}
 
 		js = thirdStepScript
@@ -106,6 +107,14 @@ func Svelte(response *Response, id string, source string) {
 		css = ServerGetTemporaryFile(server, cssBundleName)
 	}
 
+	return js, css
+}
+
+// Svelte renders and echos svelte code.
+//
+// When id is longer than 255 characters, the operation will fail silently and the server will be notified.
+func Svelte(response *Response, id string, source string) {
+	js, css := SvelteCompile(response.server, id, true, source)
 	head := ""
 	out := ""
 	_, destroyRender, renderError := JavaScript(js, map[string]v8go.FunctionCallback{
@@ -131,7 +140,7 @@ func Svelte(response *Response, id string, source string) {
 		},
 	})
 	if renderError != nil {
-		ServerNotifyError(server, renderError)
+		ServerNotifyError(response.server, renderError)
 		return
 	}
 	defer destroyRender()
@@ -139,7 +148,12 @@ func Svelte(response *Response, id string, source string) {
 	Header(response, "Content-Type", "text/html")
 	html := strings.Replace(
 		strings.Replace(
-			"<!doctype html><html lang=\"en\"><head>%head%</head><body>%out%</body></html>",
+			strings.Replace(
+				"<!doctype html><html lang=\"en\"><head><style>%css%</style>%head%</head><body>%out%</body></html>",
+				"%css%",
+				css,
+				-1,
+			),
 			"%out%",
 			out,
 			-1,
@@ -151,9 +165,15 @@ func Svelte(response *Response, id string, source string) {
 	Echo(response, html)
 }
 
-// SveltePage renders anc echos a svelte page.
+// SvelteComponent renders and echos a svelte component.
+//
+// Extension name ".svelte" will be automatically injected if missing from id.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func SveltePage(response *Response, id string) {
-	Svelte(response, id, ServerGetPage(response.server, id))
+func SvelteComponent(response *Response, id string) {
+	if !strings.HasSuffix(id, ".svelte") {
+		id += ".svelte"
+	}
+
+	Svelte(response, id, ServerGetUiFile(response.server, id))
 }
