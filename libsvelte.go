@@ -1,6 +1,7 @@
 package frizzante
 
 import (
+	"encoding/json"
 	"fmt"
 	"rogchap.com/v8go"
 	"strings"
@@ -85,10 +86,10 @@ func SvelteCompile(server *Server, id string, fix bool, source string) (string, 
 		if fix {
 			secondStepScript = strings.Replace(secondStepScript, "export default function", "function", 1)
 			secondStepScript += `
-			const payload = { head: '', out: '', body: '' }
+			const payload = { head: '', out: '' }
 			_unknown_(payload)
-			head(payload.head)
-			out(payload.out)
+			goHead(payload.head)
+			goOut(payload.out)
 			`
 		}
 
@@ -113,30 +114,40 @@ func SvelteCompile(server *Server, id string, fix bool, source string) (string, 
 // Svelte renders and echos svelte code.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func Svelte(response *Response, id string, source string) {
+func Svelte(response *Response, id string, source string, data map[string]interface{}) {
 	js, css := SvelteCompile(response.server, id, true, source)
 	head := ""
 	out := ""
 	_, destroyRender, renderError := JavaScript(js, map[string]v8go.FunctionCallback{
-		"inspect": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
-			if len(info.Args()) > 0 {
-				println(info.Args()[0].String())
-			}
-			return nil
-		},
-		"head": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		"goHead": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 			args := info.Args()
 			if len(args) > 0 {
 				head = args[0].String()
 			}
 			return nil
 		},
-		"out": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		"goOut": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 			args := info.Args()
 			if len(args) > 0 {
 				out = args[0].String()
 			}
 			return nil
+		},
+		"goData": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			context := info.Context()
+
+			text, jsonError := json.Marshal(data)
+			if jsonError != nil {
+				ServerNotifyError(response.server, jsonError)
+				return nil
+			}
+
+			value, valueError := v8go.JSONParse(context, string(text))
+			if valueError != nil {
+				ServerNotifyError(response.server, valueError)
+				return nil
+			}
+			return value
 		},
 	})
 	if renderError != nil {
@@ -170,10 +181,10 @@ func Svelte(response *Response, id string, source string) {
 // Extension name ".svelte" will be automatically injected if missing from id.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func SvelteComponent(response *Response, id string) {
+func SvelteComponent(response *Response, id string, data map[string]interface{}) {
 	if !strings.HasSuffix(id, ".svelte") {
 		id += ".svelte"
 	}
 
-	Svelte(response, id, ServerGetUiFile(response.server, id))
+	Svelte(response, id, ServerGetUiFile(response.server, id), data)
 }

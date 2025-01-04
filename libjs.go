@@ -5,7 +5,6 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 	"os"
 	"path/filepath"
-
 	//"os"
 	"rogchap.com/v8go"
 )
@@ -84,6 +83,78 @@ func JavaScriptDestroy(js *JavaScriptContext) {
 	js.isolate.Dispose()
 }
 
+func componentsPlugin(server *Server, id string) api.Plugin {
+	return api.Plugin{
+		Name: "svelte",
+		Setup: func(build api.PluginBuild) {
+			build.OnResolve(
+				api.OnResolveOptions{Filter: `^\$components\/`},
+				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+					path := filepath.Join(args.ResolveDir, args.Path)
+
+					return api.OnResolveResult{
+						Path:      path,
+						Namespace: "svelte-ns",
+					}, nil
+				},
+			)
+
+			build.OnLoad(
+				api.OnLoadOptions{Filter: `.*`, Namespace: "svelte-ns"},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, readError := os.ReadFile(args.Path)
+					if readError != nil {
+						return api.OnLoadResult{}, readError
+					}
+
+					js, _ := SvelteCompile(server, args.Path, false, string(contents))
+
+					return api.OnLoadResult{
+						Contents: &js,
+						Loader:   api.LoaderJS,
+					}, nil
+				},
+			)
+		},
+	}
+}
+
+func scriptsPlugin(server *Server, id string) api.Plugin {
+	return api.Plugin{
+		Name: "scripts",
+		Setup: func(build api.PluginBuild) {
+			build.OnResolve(
+				api.OnResolveOptions{Filter: `^\$scripts\/`},
+				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+					path := filepath.Join(args.ResolveDir, args.Path)
+
+					return api.OnResolveResult{
+						Path:      path,
+						Namespace: "scripts-ns",
+					}, nil
+				},
+			)
+
+			build.OnLoad(
+				api.OnLoadOptions{Filter: `.*`, Namespace: "scripts-ns"},
+				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					contents, readError := os.ReadFile(args.Path)
+					if readError != nil {
+						return api.OnLoadResult{}, readError
+					}
+
+					js := string(contents)
+
+					return api.OnLoadResult{
+						Contents: &js,
+						Loader:   api.LoaderJS,
+					}, nil
+				},
+			)
+		},
+	}
+}
+
 func Bundle(server *Server, id string, source string) (string, error) {
 	result := api.Build(api.BuildOptions{
 		Bundle: true,
@@ -97,43 +168,8 @@ func Bundle(server *Server, id string, source string) (string, error) {
 			".svelte": api.LoaderText,
 		},
 		Plugins: []api.Plugin{
-			api.Plugin{
-				Name: "svelte",
-				Setup: func(build api.PluginBuild) {
-					build.OnResolve(
-						api.OnResolveOptions{Filter: `.svelte$`},
-						func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-							importer := args.Importer
-
-							if "<stdin>" == importer {
-								importer = filepath.Dir(id)
-							}
-
-							return api.OnResolveResult{
-								Path:      filepath.Join(args.ResolveDir, importer, args.Path),
-								Namespace: "svelte-ns",
-							}, nil
-						},
-					)
-
-					build.OnLoad(
-						api.OnLoadOptions{Filter: `.*`, Namespace: "svelte-ns"},
-						func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-							contents, readError := os.ReadFile(args.Path)
-							if readError != nil {
-								return api.OnLoadResult{}, readError
-							}
-
-							js, _ := SvelteCompile(server, args.Path, false, string(contents))
-
-							return api.OnLoadResult{
-								Contents: &js,
-								Loader:   api.LoaderJS,
-							}, nil
-						},
-					)
-				},
-			},
+			componentsPlugin(server, id),
+			scriptsPlugin(server, id),
 		},
 	})
 
