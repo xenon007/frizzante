@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	//"os"
 	"rogchap.com/v8go"
+	"strings"
 )
 
 func structuredClone(info *v8go.FunctionCallbackInfo) *v8go.Value {
@@ -174,7 +175,13 @@ func scriptsPlugin(server *Server, id string) api.Plugin {
 			build.OnLoad(
 				api.OnLoadOptions{Filter: `.*`, Namespace: "scripts-ns"},
 				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					contents, readError := os.ReadFile(args.Path)
+					fileName := args.Path
+
+					if !strings.HasSuffix(fileName, ".js") {
+						fileName += ".js"
+					}
+
+					contents, readError := os.ReadFile(fileName)
 					if readError != nil {
 						return api.OnLoadResult{}, readError
 					}
