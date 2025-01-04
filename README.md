@@ -7,7 +7,7 @@ Frizzante is a minimalistic opinionated web server that uses Svelte for renderin
 Create a new project using the starter template.
 
 ```bash
-git clone git@github.com:razshare/frizzante-starter.git
+git clone https://github.com/razshare/frizzante-starter
 ```
 
 Configure the project

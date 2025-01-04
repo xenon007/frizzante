@@ -145,7 +145,7 @@ func Svelte(response *Response, id string, source string) {
 	}
 	defer destroyRender()
 
-	Header(response, "Content-Type", "text/html")
+	Header(response, "content-type", "text/html")
 	html := strings.Replace(
 		strings.Replace(
 			strings.Replace(
