@@ -1,7 +1,3 @@
-# What is this?
-
-Frizzante is a minimalistic and opinionated web server that uses Svelte for rendering pages.
-
 # Get started
 
 Create a new project using the starter template.
