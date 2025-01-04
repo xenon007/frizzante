@@ -52,12 +52,12 @@ func ServerCreate() *Server {
 	}
 }
 
-// ServerWithHostname sets the server hostname.
+// ServerWithHostname sets the hostname.
 func ServerWithHostname(self *Server, hostname string) {
 	self.hostname = hostname
 }
 
-// ServerWithPort sets the server port.
+// ServerWithPort sets the port.
 func ServerWithPort(self *Server, port int) {
 	self.port = port
 }
