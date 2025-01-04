@@ -3,11 +3,8 @@ package frizzante
 import (
 	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
-	"os"
-	"path/filepath"
 	//"os"
 	"rogchap.com/v8go"
-	"strings"
 )
 
 func structuredClone(info *v8go.FunctionCallbackInfo) *v8go.Value {
@@ -91,10 +88,8 @@ func pagesPlugin(server *Server, id string) api.Plugin {
 			build.OnResolve(
 				api.OnResolveOptions{Filter: `^\$pages\/`},
 				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-					path := filepath.Join(args.ResolveDir, args.Path)
-
 					return api.OnResolveResult{
-						Path:      path,
+						Path:      args.Path,
 						Namespace: "pages-ns",
 					}, nil
 				},
@@ -103,11 +98,7 @@ func pagesPlugin(server *Server, id string) api.Plugin {
 			build.OnLoad(
 				api.OnLoadOptions{Filter: `.*`, Namespace: "pages-ns"},
 				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					contents, readError := os.ReadFile(args.Path)
-					if readError != nil {
-						return api.OnLoadResult{}, readError
-					}
-
+					contents := ServerGetUiFile(server, args.Path)
 					js, _ := SvelteCompile(server, args.Path, false, string(contents))
 
 					return api.OnLoadResult{
@@ -127,10 +118,8 @@ func componentsPlugin(server *Server, id string) api.Plugin {
 			build.OnResolve(
 				api.OnResolveOptions{Filter: `^\$components\/`},
 				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-					path := filepath.Join(args.ResolveDir, args.Path)
-
 					return api.OnResolveResult{
-						Path:      path,
+						Path:      args.Path,
 						Namespace: "svelte-ns",
 					}, nil
 				},
@@ -139,11 +128,7 @@ func componentsPlugin(server *Server, id string) api.Plugin {
 			build.OnLoad(
 				api.OnLoadOptions{Filter: `.*`, Namespace: "svelte-ns"},
 				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					contents, readError := os.ReadFile(args.Path)
-					if readError != nil {
-						return api.OnLoadResult{}, readError
-					}
-
+					contents := ServerGetUiFile(server, args.Path)
 					js, _ := SvelteCompile(server, args.Path, false, string(contents))
 
 					return api.OnLoadResult{
@@ -163,10 +148,8 @@ func scriptsPlugin(server *Server, id string) api.Plugin {
 			build.OnResolve(
 				api.OnResolveOptions{Filter: `^\$scripts\/`},
 				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-					path := filepath.Join(args.ResolveDir, args.Path)
-
 					return api.OnResolveResult{
-						Path:      path,
+						Path:      args.Path,
 						Namespace: "scripts-ns",
 					}, nil
 				},
@@ -175,18 +158,7 @@ func scriptsPlugin(server *Server, id string) api.Plugin {
 			build.OnLoad(
 				api.OnLoadOptions{Filter: `.*`, Namespace: "scripts-ns"},
 				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					fileName := args.Path
-
-					if !strings.HasSuffix(fileName, ".js") {
-						fileName += ".js"
-					}
-
-					contents, readError := os.ReadFile(fileName)
-					if readError != nil {
-						return api.OnLoadResult{}, readError
-					}
-
-					js := string(contents)
+					js := ServerGetUiFile(server, args.Path)
 
 					return api.OnLoadResult{
 						Contents: &js,

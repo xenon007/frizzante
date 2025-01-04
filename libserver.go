@@ -48,7 +48,7 @@ func ServerCreate() *Server {
 		informationHandler: []func(string){},
 		errorHandler:       []func(error){},
 		temporaryDirectory: ".temp",
-		uiDirectory:        "svelte",
+		uiDirectory:        "ui",
 	}
 }
 
