@@ -290,7 +290,7 @@ func ServerStart(self *Server) {
 
 	address := fmt.Sprintf("%s:%d", self.hostname, self.port)
 
-	self.informationLogger.Printf("Listening for requests at https://%s", address)
+	self.informationLogger.Printf("Listening for requests at http://%s", address)
 
 	err := http.ListenAndServe(address, self.mux)
 	if err != nil {
