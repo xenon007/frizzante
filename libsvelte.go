@@ -1,11 +1,20 @@
 package frizzante
 
 import (
+	"fmt"
 	"rogchap.com/v8go"
 	"strings"
 )
 
+// Svelte renders and echos svelte code.
+//
+// When id is longer than 255 characters, the operation will fail silently and the server will be notified.
 func Svelte(response *Response, id string, source string) {
+	if len(id) > 255 {
+		ServerNotifyError(response.server, fmt.Errorf("page id is too long"))
+		return
+	}
+
 	server := response.server
 	js := ""
 	css := ""
@@ -76,9 +85,10 @@ func Svelte(response *Response, id string, source string) {
 
 		secondStepScriptFixed := strings.Replace(secondStepScript, "export default function", "function", 1)
 		secondStepScriptFixed += `
-			const payload = { out: '' }
+			const payload = { head: '', out: '', body: '' }
 			_unknown_(payload)
-			output(payload.out)
+			head(payload.head)
+			out(payload.out)
 			`
 
 		thirdStepScript, thirdStepScriptError := Bundle(secondStepScriptFixed)
@@ -89,39 +99,33 @@ func Svelte(response *Response, id string, source string) {
 
 		js = thirdStepScript
 
-		setTempJsError := ServerSetTemporaryFile(server, jsBundleName, thirdStepScript)
-		if setTempJsError != nil {
-			ServerNotifyError(server, setTempJsError)
-			return
-		}
-
-		setTempCssError := ServerSetTemporaryFile(server, cssBundleName, css)
-		if setTempCssError != nil {
-			ServerNotifyError(server, setTempCssError)
-			return
-		}
+		ServerSetTemporaryFile(server, jsBundleName, thirdStepScript)
+		ServerSetTemporaryFile(server, cssBundleName, css)
 	} else {
-		thirdStepScript, getTempJsError := ServerGetTemporaryFile(server, jsBundleName)
-		if getTempJsError != nil {
-			ServerNotifyError(server, getTempJsError)
-			return
-		}
-		js = thirdStepScript
-
-		cssLocal, getTempCssError := ServerGetTemporaryFile(server, cssBundleName)
-		if getTempCssError != nil {
-			ServerNotifyError(server, getTempCssError)
-			return
-		}
-		css = cssLocal
+		js = ServerGetTemporaryFile(server, jsBundleName)
+		css = ServerGetTemporaryFile(server, cssBundleName)
 	}
 
-	html := ""
+	head := ""
+	out := ""
 	_, destroyRender, renderError := JavaScript(js, map[string]v8go.FunctionCallback{
-		"output": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		"inspect": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			if len(info.Args()) > 0 {
+				println(info.Args()[0].String())
+			}
+			return nil
+		},
+		"head": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 			args := info.Args()
 			if len(args) > 0 {
-				html = args[0].String()
+				head = args[0].String()
+			}
+			return nil
+		},
+		"out": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			args := info.Args()
+			if len(args) > 0 {
+				out = args[0].String()
 			}
 			return nil
 		},
@@ -131,6 +135,25 @@ func Svelte(response *Response, id string, source string) {
 		return
 	}
 	defer destroyRender()
+
 	Header(response, "Content-Type", "text/html")
+	html := strings.Replace(
+		strings.Replace(
+			"<!doctype html><html lang=\"en\"><head>%head%</head><body>%out%</body></html>",
+			"%out%",
+			out,
+			-1,
+		),
+		"%head%",
+		head,
+		-1,
+	)
 	Echo(response, html)
+}
+
+// SveltePage renders anc echos a svelte page.
+//
+// When id is longer than 255 characters, the operation will fail silently and the server will be notified.
+func SveltePage(response *Response, id string) {
+	Svelte(response, id, ServerGetPage(response.server, id))
 }
