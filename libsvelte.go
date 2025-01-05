@@ -36,16 +36,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		return
 	}
 	stringProps := string(bytesProps)
-	//next := fmt.Sprintf(
-	//	`
-	//	import {render} from './dist/server/render.server.js'
-	//	render(%s).then(function done(rendered){
-	//		head(rendered.head??'');
-	//		body(rendered.body??'');
-	//	});
-	//	`,
-	//	stringProps,
-	//)
+
 	next := fmt.Sprintf(
 		`
 		%s
