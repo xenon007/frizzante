@@ -8,7 +8,7 @@ git clone https://github.com/razshare/frizzante-starter
 
 > [!NOTE]
 > This project uses the [Bun](https://bun.sh) runtime for updating dependencies.\
-> If you'd rather use a different runtime see [makefile](./makefile), section `update`.
+> If you'd rather use a different runtime see [makefile](https://github.com/razshare/frizzante-starter/blob/master/makefile), section `update`.
 
 
 Update dependencies
