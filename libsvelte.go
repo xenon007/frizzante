@@ -1,7 +1,6 @@
 package frizzante
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
@@ -86,11 +85,14 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		return
 	}
 
-	base64Props := base64.StdEncoding.EncodeToString(bytesProps)
+	scriptTarget := fmt.Sprintf(`<script type="application/javascript">function target(){ return document.getElementById("app");}</script>`)
+	scriptProps := fmt.Sprintf(`<script type="application/javascript">function props(){ return %s}</script>`, stringProps)
+	scriptBody := fmt.Sprintf(`<div id="app">%s</div>`, body)
 
 	index := strings.Replace(string(indexBytes), "<!--app-head-->", head, 1)
-	index = strings.Replace(index, "<!--app-body-->", body, 1)
-	index = strings.Replace(index, "<!--app-props-->", base64Props, 1)
+	index = strings.Replace(index, "<!--app-target-->", scriptTarget, 1)
+	index = strings.Replace(index, "<!--app-props-->", scriptProps, 1)
+	index = strings.Replace(index, "<!--app-body-->", scriptBody, 1)
 
 	Header(response, "content-type", "text/html")
 	Echo(response, index)
