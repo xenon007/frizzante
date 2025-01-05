@@ -43,7 +43,7 @@ func ServerCreate() *Server {
 		sessions:           map[string]*net.Conn{},
 		readTimeout:        10 * time.Second,
 		writeTimeout:       10 * time.Second,
-		maxHeaderBytes:     3 * mb,
+		maxHeaderBytes:     3 * MB,
 		errorLogger:        log.Default(),
 		informationLogger:  log.Default(),
 		tlsConfiguration:   nil,
