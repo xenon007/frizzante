@@ -2,32 +2,10 @@ package frizzante
 
 import (
 	"fmt"
-	"github.com/evanw/esbuild/pkg/api"
 	//"os"
+	"github.com/evanw/esbuild/pkg/api"
 	"rogchap.com/v8go"
 )
-
-func structuredClone(info *v8go.FunctionCallbackInfo) *v8go.Value {
-	args := info.Args()
-	if len(args) > 0 {
-		contextLocal := info.Context()
-		value := args[0]
-
-		stringified, stringifyError := v8go.JSONStringify(contextLocal, value)
-		if stringifyError != nil {
-			return nil
-		}
-
-		parsed, parseError := v8go.JSONParse(contextLocal, stringified)
-		if parseError != nil {
-			return nil
-		}
-
-		return parsed
-	}
-
-	return nil
-}
 
 type JavaScriptContext struct {
 	isolate *v8go.Isolate
@@ -56,14 +34,14 @@ func newJavaScriptContext(globals map[string]v8go.FunctionCallback) (*JavaScript
 	}, nil
 }
 
-// JavaScript runs a javascript module.
+// JavaScriptRun runs a javascript module.
 //
 // It returns the last expression of the script and a destroyer function.
 //
 // You should always call the destroyer function as soon as possible to limit memory usage.
 //
 // Each global function will be injected into the context of the module automatically so that you can invoke them from the script.
-func JavaScript(source string, globals map[string]v8go.FunctionCallback) (*v8go.Value, func(), error) {
+func JavaScriptRun(source string, globals map[string]v8go.FunctionCallback) (*v8go.Value, func(), error) {
 	js, createError := newJavaScriptContext(globals)
 	if createError != nil {
 		return nil, nil, createError
@@ -81,111 +59,14 @@ func JavaScriptDestroy(js *JavaScriptContext) {
 	js.isolate.Dispose()
 }
 
-func pagesPlugin(server *Server, id string) api.Plugin {
-	return api.Plugin{
-		Name: "pages",
-		Setup: func(build api.PluginBuild) {
-			build.OnResolve(
-				api.OnResolveOptions{Filter: `^\$pages\/`},
-				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-					return api.OnResolveResult{
-						Path:      args.Path,
-						Namespace: "pages-ns",
-					}, nil
-				},
-			)
-
-			build.OnLoad(
-				api.OnLoadOptions{Filter: `.*`, Namespace: "pages-ns"},
-				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					contents := ServerGetUiFile(server, args.Path)
-					js, _ := SvelteCompile(server, args.Path, false, string(contents))
-
-					return api.OnLoadResult{
-						Contents: &js,
-						Loader:   api.LoaderJS,
-					}, nil
-				},
-			)
-		},
-	}
-}
-
-func componentsPlugin(server *Server, id string) api.Plugin {
-	return api.Plugin{
-		Name: "svelte",
-		Setup: func(build api.PluginBuild) {
-			build.OnResolve(
-				api.OnResolveOptions{Filter: `^\$components\/`},
-				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-					return api.OnResolveResult{
-						Path:      args.Path,
-						Namespace: "svelte-ns",
-					}, nil
-				},
-			)
-
-			build.OnLoad(
-				api.OnLoadOptions{Filter: `.*`, Namespace: "svelte-ns"},
-				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					contents := ServerGetUiFile(server, args.Path)
-					js, _ := SvelteCompile(server, args.Path, false, string(contents))
-
-					return api.OnLoadResult{
-						Contents: &js,
-						Loader:   api.LoaderJS,
-					}, nil
-				},
-			)
-		},
-	}
-}
-
-func scriptsPlugin(server *Server, id string) api.Plugin {
-	return api.Plugin{
-		Name: "scripts",
-		Setup: func(build api.PluginBuild) {
-			build.OnResolve(
-				api.OnResolveOptions{Filter: `^\$scripts\/`},
-				func(args api.OnResolveArgs) (api.OnResolveResult, error) {
-					return api.OnResolveResult{
-						Path:      args.Path,
-						Namespace: "scripts-ns",
-					}, nil
-				},
-			)
-
-			build.OnLoad(
-				api.OnLoadOptions{Filter: `.*`, Namespace: "scripts-ns"},
-				func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					js := ServerGetUiFile(server, args.Path)
-
-					return api.OnLoadResult{
-						Contents: &js,
-						Loader:   api.LoaderJS,
-					}, nil
-				},
-			)
-		},
-	}
-}
-
-func Bundle(server *Server, id string, source string) (string, error) {
+func JavaScriptBundle(root string, format api.Format, source string) (string, error) {
 	result := api.Build(api.BuildOptions{
 		Bundle: true,
-		Format: api.FormatESModule,
+		Format: format,
 		Write:  false,
 		Stdin: &api.StdinOptions{
 			Contents:   source,
-			ResolveDir: server.uiDirectory,
-		},
-		Loader: map[string]api.Loader{
-			".svelte": api.LoaderText,
-		},
-		Plugins: []api.Plugin{
-			pagesPlugin(server, id),
-			componentsPlugin(server, id),
-			scriptsPlugin(server, id),
+			ResolveDir: root,
 		},
 	})
 

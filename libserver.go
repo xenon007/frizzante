@@ -2,6 +2,7 @@ package frizzante
 
 import (
 	"crypto/tls"
+	"embed"
 	"errors"
 	"fmt"
 	"log"
@@ -28,7 +29,8 @@ type Server struct {
 	informationHandler []func(string)
 	errorHandler       []func(error)
 	temporaryDirectory string
-	uiDirectory        string
+	wwwDirectory       string
+	embeddedFileSystem embed.FS
 }
 
 // ServerCreate creates a server.
@@ -48,7 +50,7 @@ func ServerCreate() *Server {
 		informationHandler: []func(string){},
 		errorHandler:       []func(error){},
 		temporaryDirectory: ".temp",
-		uiDirectory:        "ui",
+		wwwDirectory:       "www",
 	}
 }
 
@@ -97,65 +99,12 @@ func ServerWithTemporaryDirectory(self *Server, temporaryDirectory string) {
 	self.temporaryDirectory = temporaryDirectory
 }
 
-// ServerWithUiDirectory sets the ui directory.
+// ServerWithEmbeddedFileSystem sets the embedded file system.
 //
-// Default is "ui".
-func ServerWithUiDirectory(self *Server, uiDirectory string) {
-	self.uiDirectory = uiDirectory
-}
-
-// ServerGetUiFile gets an ui file.
-//
-// Any errors will be forwarded to the server logger silently.
-//
-// Output will be blank if an error occurs.
-//
-// When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func ServerGetUiFile(self *Server, id string) string {
-	if len(id) > 255 {
-		ServerNotifyError(self, fmt.Errorf("page id is too long"))
-		return ""
-	}
-
-	if strings.Contains(id, "../") {
-		ServerNotifyError(self, fmt.Errorf("invalid substring `../` detected in page id `%s`", id))
-		return ""
-	}
-
-	fileName := self.uiDirectory
-	if !strings.HasSuffix(fileName, "/") && !strings.HasPrefix(id, "/") {
-		fileName += "/"
-	}
-
-	fileName += id
-
-	contents, err := os.ReadFile(fileName)
-	if err != nil {
-		ServerNotifyError(self, err)
-		return ""
-	}
-	return string(contents)
-}
-
-// ServerHasUiFile checks if an ui file exists.
-//
-// When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func ServerHasUiFile(self *Server, id string) bool {
-	if len(id) > 255 {
-		ServerNotifyError(self, fmt.Errorf("page id is too long"))
-		return false
-	}
-
-	if strings.Contains(id, "../") {
-		return false
-	}
-
-	fileName := self.uiDirectory
-	if !strings.HasSuffix(fileName, "/") && !strings.HasPrefix(id, "/") {
-		fileName += "/"
-	}
-	fileName += id
-	return exists(fileName)
+// The embedded file system should contain at least directory "www/dist" so
+// that the server can properly render and serve svelte components.
+func ServerWithEmbeddedFileSystem(self *Server, embeddedFileSystem embed.FS) {
+	self.embeddedFileSystem = embeddedFileSystem
 }
 
 // ServerSetTemporaryFile sets a temporary file.
@@ -172,7 +121,7 @@ func ServerSetTemporaryFile(self *Server, id string, contents string) {
 		return
 	}
 
-	if !exists(self.temporaryDirectory) {
+	if !Exists(self.temporaryDirectory) {
 		mkdirError := os.MkdirAll(self.temporaryDirectory, os.ModePerm)
 		if mkdirError != nil {
 			ServerNotifyError(self, mkdirError)
@@ -187,7 +136,7 @@ func ServerSetTemporaryFile(self *Server, id string, contents string) {
 	fileName += id
 
 	directory := filepath.Dir(fileName)
-	if !exists(directory) {
+	if !Exists(directory) {
 		mkdirError := os.MkdirAll(directory, os.ModePerm)
 		if mkdirError != nil {
 			ServerNotifyError(self, mkdirError)
@@ -246,7 +195,7 @@ func ServerGetTemporaryFile(self *Server, id string) string {
 	return string(contents)
 }
 
-// ServerHasTemporaryFile checks if a temporary file exists.
+// ServerHasTemporaryFile checks if a temporary file Exists.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
 func ServerHasTemporaryFile(self *Server, id string) bool {
@@ -264,7 +213,7 @@ func ServerHasTemporaryFile(self *Server, id string) bool {
 		fileName += "/"
 	}
 	fileName += id
-	return exists(fileName)
+	return Exists(fileName)
 }
 
 // ServerClearTemporaryDirectory clears the temporary directory.
@@ -277,7 +226,7 @@ func ServerClearTemporaryDirectory(self *Server) {
 
 // ServerStart starts the server.
 //
-// If for some reason the server cannot start, ServerStarts panics.
+// If the server fails to start, ServerStart panics.
 func ServerStart(self *Server) {
 	self.server = &http.Server{
 		Handler:        self.mux,
@@ -300,7 +249,7 @@ func ServerStart(self *Server) {
 
 // ServerOnRequest registers a handler function for the given pattern.
 //
-// If the given pattern conflicts, with one that is already registered, ServerOnRequest panics.
+// If the given pattern conflicts with one that is already registered, ServerOnRequest panics.
 func ServerOnRequest(
 	self *Server,
 	pattern string,
@@ -450,4 +399,117 @@ func Accept(self *Request, mimes ...string) bool {
 	}
 
 	return false
+}
+
+func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
+	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+
+	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) ||
+		EmbeddedIsDirectory(request.server.embeddedFileSystem, fileName) {
+		orElse()
+		return
+	}
+
+	file, readError := request.server.embeddedFileSystem.ReadFile(fileName)
+	if readError != nil {
+		ServerNotifyError(request.server, readError)
+		return
+	}
+
+	mime := Mime(fileName)
+
+	length := fmt.Sprintf("%d", len(file))
+
+	Header(response, "content-type", mime)
+	Header(response, "content-length", length)
+
+	Send(response, file)
+}
+
+func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()) {
+	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+
+	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) {
+		orElse()
+		return
+	}
+
+	if EmbeddedIsDirectory(request.server.embeddedFileSystem, fileName) {
+		fileName = filepath.Join(fileName, "index.html")
+		if !IsFile(fileName) {
+			orElse()
+			return
+		}
+	}
+
+	file, readError := os.ReadFile(fileName)
+	if readError != nil {
+		ServerNotifyError(request.server, readError)
+		return
+	}
+
+	mime := Mime(fileName)
+
+	length := fmt.Sprintf("%d", len(file))
+
+	Header(response, "content-type", mime)
+	Header(response, "content-length", length)
+
+	Send(response, file)
+}
+
+func FileOrIndexElse(request *Request, response *Response, orElse func()) {
+	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+
+	if !Exists(fileName) {
+		orElse()
+		return
+	}
+
+	if IsDirectory(fileName) {
+		fileName = filepath.Join(fileName, "index.html")
+		if !IsFile(fileName) {
+			orElse()
+			return
+		}
+	}
+
+	file, readError := os.ReadFile(fileName)
+	if readError != nil {
+		ServerNotifyError(request.server, readError)
+		return
+	}
+
+	mime := Mime(fileName)
+
+	length := fmt.Sprintf("%d", len(file))
+
+	Header(response, "content-type", mime)
+	Header(response, "content-length", length)
+
+	Send(response, file)
+}
+
+func FileOrElse(request *Request, response *Response, orElse func()) {
+	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+
+	if !Exists(fileName) || IsDirectory(fileName) {
+		orElse()
+		return
+	}
+
+	file, readError := os.ReadFile(fileName)
+	if readError != nil {
+		ServerNotifyError(request.server, readError)
+		return
+	}
+
+	mime := Mime(fileName)
+
+	length := fmt.Sprintf("%d", len(file))
+
+	Header(response, "content-type", mime)
+	Header(response, "content-length", length)
+
+	Send(response, file)
 }
