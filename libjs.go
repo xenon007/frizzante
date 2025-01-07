@@ -2,7 +2,6 @@ package frizzante
 
 import (
 	"fmt"
-	//"os"
 	"github.com/evanw/esbuild/pkg/api"
 	"rogchap.com/v8go"
 )

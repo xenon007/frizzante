@@ -1,7 +1,7 @@
 package frizzante
 
 import (
-	"crypto/tls"
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -15,7 +15,7 @@ import (
 )
 
 type Server struct {
-	hostname           string
+	hostName           string
 	port               int
 	server             *http.Server
 	mux                *http.ServeMux
@@ -25,7 +25,8 @@ type Server struct {
 	maxHeaderBytes     int
 	errorLogger        *log.Logger
 	informationLogger  *log.Logger
-	tlsConfiguration   *tls.Config
+	certificate        string
+	certificateKey     string
 	informationHandler []func(string)
 	errorHandler       []func(error)
 	temporaryDirectory string
@@ -36,8 +37,8 @@ type Server struct {
 // ServerCreate creates a server.
 func ServerCreate() *Server {
 	return &Server{
-		hostname:           "",
-		port:               80,
+		hostName:           "127.0.0.1",
+		port:               8080,
 		server:             nil,
 		mux:                http.NewServeMux(),
 		sessions:           map[string]*net.Conn{},
@@ -46,7 +47,8 @@ func ServerCreate() *Server {
 		maxHeaderBytes:     3 * MB,
 		errorLogger:        log.Default(),
 		informationLogger:  log.Default(),
-		tlsConfiguration:   nil,
+		certificate:        "",
+		certificateKey:     "",
 		informationHandler: []func(string){},
 		errorHandler:       []func(error){},
 		temporaryDirectory: ".temp",
@@ -54,9 +56,9 @@ func ServerCreate() *Server {
 	}
 }
 
-// ServerWithHostname sets the hostname.
-func ServerWithHostname(self *Server, hostname string) {
-	self.hostname = hostname
+// ServerWithHostName sets the host name.
+func ServerWithHostName(self *Server, hostName string) {
+	self.hostName = hostName
 }
 
 // ServerWithPort sets the port.
@@ -89,9 +91,10 @@ func ServerWithInformationLogger(self *Server, informationLogger *log.Logger) {
 	self.informationLogger = informationLogger
 }
 
-// ServerWithTlsConfiguration sets the tls configuration.
-func ServerWithTlsConfiguration(self *Server, tlsConfiguration *tls.Config) {
-	self.tlsConfiguration = tlsConfiguration
+// ServerWithCertificate sets the tls configuration.
+func ServerWithCertificateAndKey(self *Server, certificate string, key string) {
+	self.certificate = certificate
+	self.certificateKey = key
 }
 
 // ServerWithTemporaryDirectory sets the temporary directory.
@@ -234,14 +237,38 @@ func ServerStart(self *Server) {
 		WriteTimeout:   self.writeTimeout,
 		MaxHeaderBytes: self.maxHeaderBytes,
 		ErrorLog:       self.errorLogger,
-		TLSConfig:      self.tlsConfiguration,
 	}
 
-	address := fmt.Sprintf("%s:%d", self.hostname, self.port)
+	address := fmt.Sprintf("%s:%d", self.hostName, self.port)
 
-	self.informationLogger.Printf("Listening for requests at http://%s", address)
+	if "" != self.certificate && "" != self.certificateKey {
+		self.informationLogger.Printf("listening for requests at https://%s", address)
+		err := http.ListenAndServeTLS(address, self.certificate, self.certificateKey, self.mux)
+		if err != nil {
+			if errors.Is(err, http.ErrServerClosed) {
+				self.informationLogger.Println("shutting down server")
+				return
+			}
+			panic(err.Error())
+		}
+	} else {
+		self.informationLogger.Printf("listening for requests at http://%s", address)
+		err := http.ListenAndServe(address, self.mux)
+		if err != nil {
+			if errors.Is(err, http.ErrServerClosed) {
+				self.informationLogger.Println("shutting down server")
+				return
+			}
+			panic(err.Error())
+		}
+	}
+}
 
-	err := http.ListenAndServe(address, self.mux)
+// ServerStop attempts to stop the server.
+//
+// If the shutdown attempt fails, ServerStop panics.
+func ServerStop(self *Server) {
+	err := self.server.Shutdown(context.Background())
 	if err != nil {
 		panic(err.Error())
 	}
