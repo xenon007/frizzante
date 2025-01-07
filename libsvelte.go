@@ -53,6 +53,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		ServerNotifyError(response.server, bundleError)
 		return
 	}
+
 	head := ""
 	body := ""
 	_, destroy, javaScriptError := JavaScriptRun(
@@ -77,7 +78,6 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		ServerNotifyError(response.server, javaScriptError)
 		return
 	}
-
 	defer destroy()
 
 	indexBytes, readError := response.server.embeddedFileSystem.ReadFile(filepath.Join(response.server.wwwDirectory, "dist", "client", "index.html"))
@@ -85,8 +85,8 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		return
 	}
 
-	scriptTarget := fmt.Sprintf(`<script type="application/javascript">function target(){ return document.getElementById("app");}</script>`)
-	scriptProps := fmt.Sprintf(`<script type="application/javascript">function props(){ return %s}</script>`, stringProps)
+	scriptTarget := fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("app");}</script>`)
+	scriptProps := fmt.Sprintf(`<script type="application/javascript">function props(){return %s}</script>`, stringProps)
 	scriptBody := fmt.Sprintf(`<div id="app">%s</div>`, body)
 
 	index := strings.Replace(string(indexBytes), "<!--app-head-->", head, 1)
@@ -94,6 +94,6 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 	index = strings.Replace(index, "<!--app-props-->", scriptProps, 1)
 	index = strings.Replace(index, "<!--app-body-->", scriptBody, 1)
 
-	Header(response, "content-type", "text/html")
+	Header(response, "Content-Type", "text/html")
 	Echo(response, index)
 }
