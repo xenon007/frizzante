@@ -85,7 +85,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		return
 	}
 
-	scriptTarget := fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("app");}</script>`)
+	scriptTarget := fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`)
 	scriptProps := fmt.Sprintf(`<script type="application/javascript">function props(){return %s}</script>`, stringProps)
 	scriptBody := fmt.Sprintf(`<div id="app">%s</div>`, body)
 
