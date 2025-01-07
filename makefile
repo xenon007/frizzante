@@ -24,3 +24,4 @@ certificate:
 hooks:
 	printf "#!/usr/bin/env bash\n" > .git/hooks/pre-commit
 	printf "make test" >> .git/hooks/pre-commit
+	chmod +x .git/hooks/pre-commit
