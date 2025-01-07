@@ -36,7 +36,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 	}
 	stringProps := string(bytesProps)
 
-	next := fmt.Sprintf(
+	doneEsm := fmt.Sprintf(
 		`
 		%s
 		render(%s).then(function done(rendered){
@@ -48,7 +48,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		stringProps,
 	)
 
-	esm, bundleError := JavaScriptBundle(response.server.wwwDirectory, api.FormatCommonJS, next)
+	doneCjs, bundleError := JavaScriptBundle(response.server.wwwDirectory, api.FormatCommonJS, doneEsm)
 	if bundleError != nil {
 		ServerNotifyError(response.server, bundleError)
 		return
@@ -56,7 +56,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 	head := ""
 	body := ""
 	_, destroy, javaScriptError := JavaScriptRun(
-		esm, map[string]v8go.FunctionCallback{
+		doneCjs, map[string]v8go.FunctionCallback{
 			"head": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 				args := info.Args()
 				if len(args) > 0 {
