@@ -32,7 +32,6 @@ type Server struct {
 	informationHandler []func(string)
 	errorHandler       []func(error)
 	temporaryDirectory string
-	wwwDirectory       string
 	embeddedFileSystem embed.FS
 }
 
@@ -55,7 +54,6 @@ func ServerCreate() *Server {
 		informationHandler: []func(string){},
 		errorHandler:       []func(error){},
 		temporaryDirectory: ".temp",
-		wwwDirectory:       "www",
 	}
 }
 
@@ -477,7 +475,9 @@ func Accept(self *Request, mimes ...string) bool {
 }
 
 func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
-	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
+	fileName = strings.Split(fileName, "?")[0]
+	fileName = strings.Split(fileName, "&")[0]
 
 	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) ||
 		EmbeddedIsDirectory(request.server.embeddedFileSystem, fileName) {
@@ -502,7 +502,7 @@ func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
 }
 
 func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()) {
-	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) {
 		orElse()
@@ -534,7 +534,7 @@ func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()
 }
 
 func FileOrIndexElse(request *Request, response *Response, orElse func()) {
-	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) {
 		orElse()
@@ -566,7 +566,7 @@ func FileOrIndexElse(request *Request, response *Response, orElse func()) {
 }
 
 func FileOrElse(request *Request, response *Response, orElse func()) {
-	fileName := filepath.Join(request.server.wwwDirectory, "dist/client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) || IsDirectory(fileName) {
 		orElse()
