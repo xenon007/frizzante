@@ -9,32 +9,22 @@ import (
 	"strings"
 )
 
-// EchoSvelte renders and echos the svelte application.
-func EchoSvelte(response *Response, props map[string]interface{}) {
+func render(response *Response, stringProps string) (string, string, error) {
 	renderFileName := filepath.Join(response.server.wwwDirectory, "dist", "server", "render.server.js")
 
 	renderEsmBytes, readError := response.server.embeddedFileSystem.ReadFile(renderFileName)
 	if readError != nil {
-		ServerNotifyError(response.server, readError)
-		return
+		return "", "", readError
 	}
 
 	renderEsm := string(renderEsmBytes)
 
 	renderCjs, javaScriptBundleError := JavaScriptBundle(response.server.wwwDirectory, api.FormatCommonJS, renderEsm)
 	if javaScriptBundleError != nil {
-		ServerNotifyError(response.server, javaScriptBundleError)
-		return
+		return "", "", javaScriptBundleError
 	}
 
 	renderIif := fmt.Sprintf("const module={exports:{}}; const render = \n(function(){\n%s\nreturn render;\n})()", renderCjs)
-
-	bytesProps, jsonError := json.Marshal(props)
-	if jsonError != nil {
-		ServerNotifyError(response.server, jsonError)
-		return
-	}
-	stringProps := string(bytesProps)
 
 	doneEsm := fmt.Sprintf(
 		`
@@ -50,8 +40,7 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 
 	doneCjs, bundleError := JavaScriptBundle(response.server.wwwDirectory, api.FormatCommonJS, doneEsm)
 	if bundleError != nil {
-		ServerNotifyError(response.server, bundleError)
-		return
+		return "", "", bundleError
 	}
 
 	head := ""
@@ -75,25 +64,64 @@ func EchoSvelte(response *Response, props map[string]interface{}) {
 		},
 	)
 	if javaScriptError != nil {
-		ServerNotifyError(response.server, javaScriptError)
-		return
+		return head, body, javaScriptError
 	}
 	defer destroy()
 
+	return head, body, nil
+}
+
+// EchoSvelte renders and echos the svelte application.
+func EchoSvelte(response *Response, ssr bool, props map[string]interface{}) {
 	indexBytes, readError := response.server.embeddedFileSystem.ReadFile(filepath.Join(response.server.wwwDirectory, "dist", "client", "index.html"))
 	if readError != nil {
 		return
 	}
 
-	scriptTarget := fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`)
-	scriptProps := fmt.Sprintf(`<script type="application/javascript">function props(){return %s}</script>`, stringProps)
-	scriptBody := fmt.Sprintf(`<div id="app">%s</div>`, body)
+	bytesProps, jsonError := json.Marshal(props)
+	if jsonError != nil {
+		ServerNotifyError(response.server, jsonError)
+		return
+	}
+	stringProps := string(bytesProps)
 
-	index := strings.Replace(string(indexBytes), "<!--app-head-->", head, 1)
-	index = strings.Replace(index, "<!--app-target-->", scriptTarget, 1)
-	index = strings.Replace(index, "<!--app-props-->", scriptProps, 1)
-	index = strings.Replace(index, "<!--app-body-->", scriptBody, 1)
+	head := ""
+	body := ""
+	if ssr {
+		headLocal, bodyLocal, renderError := render(response, stringProps)
+		if renderError != nil {
+			ServerNotifyError(response.server, renderError)
+			return
+		}
+		head = headLocal
+		body = bodyLocal
+	}
+
+	stringIndex := strings.Replace(
+		strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					string(indexBytes),
+					"<!--app-target-->",
+					`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`,
+					1,
+				),
+				"<!--app-body-->",
+				fmt.Sprintf(`<div id="app">%s</div>`, body),
+				1,
+			),
+			"<!--app-head-->",
+			head,
+			1,
+		),
+		"<!--app-props-->",
+		fmt.Sprintf(
+			`<script type="application/javascript">function props(){return %s}</script>`,
+			stringProps,
+		),
+		1,
+	)
 
 	Header(response, "Content-Type", "text/html")
-	Echo(response, index)
+	Echo(response, stringIndex)
 }
