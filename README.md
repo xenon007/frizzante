@@ -17,16 +17,6 @@ Update dependencies
 make update
 ```
 
-Make a self-signed certificate
-
-```bash
-make certificate
-```
-
-> [!NOTE]
-> See [make file, section certificate](https://github.com/razshare/frizzante-starter/blob/master/makefile#L30) 
-> to customize your certificate or use `make certificate-interactive`.
-
 Then start the server
 
 ```bash
