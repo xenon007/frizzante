@@ -253,7 +253,7 @@ func RedirectToSecure(request *Request, response *Response) bool {
 //
 // When the request is already secure, RedirectToSecureWithStatusCode returns false.
 func RedirectToSecureWithStatusCode(request *Request, response *Response, statusCode int) bool {
-	if ("" != request.server.certificate || "" != request.server.certificateKey) && request.HttpRequest.TLS != nil {
+	if "" != request.server.certificate || "" != request.server.certificateKey || request.HttpRequest.TLS != nil {
 		return false
 	}
 
