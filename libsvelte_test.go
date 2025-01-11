@@ -15,7 +15,7 @@ func TestEchoSvelte(test *testing.T) {
 		test.Fatal(err)
 	})
 	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
-		EchoSvelte(response, map[string]interface{}{
+		EchoSvelte(response, true, map[string]interface{}{
 			"name": "world",
 		})
 	})
