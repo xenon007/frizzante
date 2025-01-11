@@ -11,11 +11,6 @@ git clone https://github.com/razshare/frizzante-starter
 > If you'd rather use a different runtime than Bun to update your javascript dependencies,
 > see [makefile, section "update"](https://github.com/razshare/frizzante-starter/blob/master/makefile#L1-L6).
 
-Update dependencies
-
-```bash
-make update
-```
 
 Then start the server
 
