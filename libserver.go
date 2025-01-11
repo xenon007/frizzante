@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Server struct {
 	hostName           string
 	port               int
+	securePort         int
 	server             *http.Server
 	mux                *http.ServeMux
 	sessions           map[string]*net.Conn
@@ -39,6 +41,7 @@ func ServerCreate() *Server {
 	return &Server{
 		hostName:           "127.0.0.1",
 		port:               8080,
+		securePort:         8383,
 		server:             nil,
 		mux:                http.NewServeMux(),
 		sessions:           map[string]*net.Conn{},
@@ -66,6 +69,11 @@ func ServerWithPort(self *Server, port int) {
 	self.port = port
 }
 
+// ServerWithSecurePort sets the secure port.
+func ServerWithSecurePort(self *Server, securePort int) {
+	self.securePort = securePort
+}
+
 // ServerWithReadTimeout sets the read timeout.
 func ServerWithReadTimeout(self *Server, readTimeout time.Duration) {
 	self.readTimeout = readTimeout
@@ -91,7 +99,7 @@ func ServerWithInformationLogger(self *Server, informationLogger *log.Logger) {
 	self.informationLogger = informationLogger
 }
 
-// ServerWithCertificate sets the tls configuration.
+// ServerWithCertificateAndKey sets the tls configuration.
 func ServerWithCertificateAndKey(self *Server, certificate string, key string) {
 	self.certificate = certificate
 	self.certificateKey = key
@@ -227,6 +235,36 @@ func ServerClearTemporaryDirectory(self *Server) {
 	}
 }
 
+// Redirect redirects the request.
+func Redirect(response *Response, location string, statusCode int) {
+	Status(response, statusCode)
+	Header(response, "Location", location)
+	Echo(response, "")
+}
+
+// RedirectToSecure tries to redirect the request to the https server with status code 302.
+//
+// When the request is already secure, RedirectToSecure returns false.
+func RedirectToSecure(request *Request, response *Response) bool {
+	return RedirectToSecureWithStatusCode(request, response, 302)
+}
+
+// RedirectToSecureWithStatusCode tries to redirect the request to the https server.
+//
+// When the request is already secure, RedirectToSecureWithStatusCode returns false.
+func RedirectToSecureWithStatusCode(request *Request, response *Response, statusCode int) bool {
+	if request.HttpRequest.TLS != nil {
+		return false
+	}
+
+	insecureSuffix := fmt.Sprintf(":%d", request.server.port)
+	secureSuffix := fmt.Sprintf(":%d", request.server.securePort)
+	secureHost := strings.Replace(request.HttpRequest.Host, insecureSuffix, secureSuffix, 1)
+	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.HttpRequest.RequestURI)
+	Redirect(response, secureLocation, statusCode)
+	return true
+}
+
 // ServerStart starts the server.
 //
 // If the server fails to start, ServerStart panics.
@@ -239,19 +277,12 @@ func ServerStart(self *Server) {
 		ErrorLog:       self.errorLogger,
 	}
 
-	address := fmt.Sprintf("%s:%d", self.hostName, self.port)
+	var waiter sync.WaitGroup
 
-	if "" != self.certificate && "" != self.certificateKey {
-		self.informationLogger.Printf("listening for requests at https://%s", address)
-		err := http.ListenAndServeTLS(address, self.certificate, self.certificateKey, self.mux)
-		if err != nil {
-			if errors.Is(err, http.ErrServerClosed) {
-				self.informationLogger.Println("shutting down server")
-				return
-			}
-			panic(err.Error())
-		}
-	} else {
+	waiter.Add(2)
+
+	go func() {
+		address := fmt.Sprintf("%s:%d", self.hostName, self.port)
 		self.informationLogger.Printf("listening for requests at http://%s", address)
 		err := http.ListenAndServe(address, self.mux)
 		if err != nil {
@@ -261,7 +292,24 @@ func ServerStart(self *Server) {
 			}
 			panic(err.Error())
 		}
-	}
+	}()
+
+	go func() {
+		secureAddress := fmt.Sprintf("%s:%d", self.hostName, self.securePort)
+		if "" != self.certificate && "" != self.certificateKey {
+			self.informationLogger.Printf("listening for requests at https://%s", secureAddress)
+			err := http.ListenAndServeTLS(secureAddress, self.certificate, self.certificateKey, self.mux)
+			if err != nil {
+				if errors.Is(err, http.ErrServerClosed) {
+					self.informationLogger.Println("shutting down server")
+					return
+				}
+				panic(err.Error())
+			}
+		}
+	}()
+
+	waiter.Wait()
 }
 
 // ServerStop attempts to stop the server.
