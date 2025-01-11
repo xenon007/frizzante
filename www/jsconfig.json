@@ -18,7 +18,7 @@
     "lib/**/*.d.ts",
     "lib/**/*.js",
     "lib/**/*.svelte",
-    "main.svelte",
+    "index.svelte",
     "render.server.js",
     "render.client.js"
   ]
