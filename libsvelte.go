@@ -71,12 +71,14 @@ func render(response *Response, stringProps string) (string, string, error) {
 	return head, body, nil
 }
 
-// EchoSvelte renders and echos the svelte application.
-func EchoSvelte(response *Response, ssr bool, props map[string]interface{}) {
+// Svelte renders and echos the svelte application.
+func Svelte(response *Response, props map[string]interface{}) {
 	indexBytes, readError := response.server.embeddedFileSystem.ReadFile(filepath.Join(response.server.wwwDirectory, "dist", "client", "index.html"))
 	if readError != nil {
 		return
 	}
+
+	ssr := props["ssr"].(bool)
 
 	bytesProps, jsonError := json.Marshal(props)
 	if jsonError != nil {
