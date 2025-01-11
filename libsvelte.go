@@ -71,16 +71,19 @@ func render(response *Response, stringProps string) (string, string, error) {
 	return head, body, nil
 }
 
+type SvelteOptions struct {
+	Ssr   bool
+	Props map[string]interface{}
+}
+
 // Svelte renders and echos the svelte application.
-func Svelte(response *Response, props map[string]interface{}) {
+func Svelte(response *Response, options SvelteOptions) {
 	indexBytes, readError := response.server.embeddedFileSystem.ReadFile(filepath.Join(response.server.wwwDirectory, "dist", "client", "index.html"))
 	if readError != nil {
 		return
 	}
 
-	ssr := props["ssr"].(bool)
-
-	bytesProps, jsonError := json.Marshal(props)
+	bytesProps, jsonError := json.Marshal(options.Props)
 	if jsonError != nil {
 		ServerNotifyError(response.server, jsonError)
 		return
@@ -89,7 +92,7 @@ func Svelte(response *Response, props map[string]interface{}) {
 
 	head := ""
 	body := ""
-	if ssr {
+	if options.Ssr {
 		headLocal, bodyLocal, renderError := render(response, stringProps)
 		if renderError != nil {
 			ServerNotifyError(response.server, renderError)

@@ -15,9 +15,11 @@ func TestEchoSvelteWithSsr(test *testing.T) {
 		test.Fatal(err)
 	})
 	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
-		Svelte(response, map[string]interface{}{
-			"ssr":  true,
-			"name": "world",
+		Svelte(response, SvelteOptions{
+			Ssr: true,
+			Props: map[string]interface{}{
+				"name": "world",
+			},
 		})
 	})
 	go ServerStart(server)
@@ -45,9 +47,11 @@ func TestEchoSvelteWithoutSsr(test *testing.T) {
 		test.Fatal(err)
 	})
 	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
-		Svelte(response, map[string]interface{}{
-			"ssr":  false,
-			"name": "world",
+		Svelte(response, SvelteOptions{
+			Ssr: false,
+			Props: map[string]interface{}{
+				"name": "world",
+			},
 		})
 	})
 	go ServerStart(server)
