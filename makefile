@@ -1,22 +1,14 @@
-update: www/package.json go.mod
+update: www/package.json prepare/main.go go.mod
 	go mod tidy
-	go run prepare/main.go
-	make redist
 	cd www && bun update
-	cd www && bunx vite build --ssr .frizzante/vite-project/render.server.js --outDir dist/server --emptyOutDir
-	cd www && ./node_modules/.bin/esbuild dist/server/render.server.js --bundle --outfile=dist/server/render.server.js --format=esm --allow-overwrite
-	cd www && bunx vite build --outDir dist/client --emptyOutDir
 
 clean:
 	go clean
 	rm cert.pem -f
 	rm key.pem -f
 	rm out -fr
-	make redist
-	mkdir www/dist -p
-	touch www/dist/.gitkeep
-
-redist:
+	rm bin -fr
+	rm tmp -fr
 	rm www/dist -fr
 	mkdir www/dist/server -p
 	mkdir www/dist/client -p
@@ -24,16 +16,58 @@ redist:
 	touch www/dist/server/.gitkeep
 	touch www/dist/client/.gitkeep
 
-test: clean update
+#build: www-build main.go  go.mod
+#	CGO_ENABLED=1 go build -o out/app .
+#
+#start: www-build main.go  go.mod
+#	CGO_ENABLED=1 go run main.go
+
+dev: bin go.mod
+	DEV=1 CGO_ENABLED=1 ./bin/air \
+	--build.cmd "go build -o out/app ." \
+	--build.bin "out/app" \
+	--build.exclude_dir "out,bin,www" \
+	--build.exclude_regex "_text.go" \
+	--build.include_ext "go" \
+	--build.log "go-build-errors.log" & make www-watch & wait
+
+bin:
+	curl -sSfL https://raw.githubusercontent.com/air-verse/air/master/install.sh | sh -s
+
+www-build: www/package.json
+	go run prepare/main.go
+	make www-build-server & make www-build-client & wait
+
+www-build-server: www/package.json
+	cd www && \
+	bunx vite build --ssr .frizzante/vite-project/render.server.js --outDir dist/server --emptyOutDir && \
+	./node_modules/.bin/esbuild dist/server/render.server.js --bundle --outfile=dist/server/render.server.js --format=esm --allow-overwrite
+
+www-build-client: www/package.json
+	cd www && \
+	bunx vite build --outDir dist/client --emptyOutDir
+
+www-watch: www/package.json
+	make www-watch-server & make www-watch-client & wait
+
+www-watch-server: www/package.json
+	cd www && \
+	bunx vite build --watch --ssr .frizzante/vite-project/render.server.js --outDir dist/server --emptyOutDir && \
+	./node_modules/.bin/esbuild dist/server/render.server.js --bundle --outfile=dist/server/render.server.js --format=esm --allow-overwrite
+
+www-watch-client: www/package.json
+	cd www && \
+	bunx vite build --watch --outDir dist/client --emptyOutDir
+
+test: www-build go.mod
 	go test
 
 certificate-interactive:
-	openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out certificate.pem
+	openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out cert.pem
 
 certificate:
-	openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out certificate.pem -nodes -subj \
+	openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout key.pem -out cert.pem -nodes -subj \
 	"/C=XX/ST=Test/L=Test/O=Test/OU=Test/CN=Test"
-
 
 hooks:
 	printf "#!/usr/bin/env bash\n" > .git/hooks/pre-commit
