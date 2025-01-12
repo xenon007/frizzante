@@ -333,14 +333,8 @@ func ServerSetSveltePage(self *Server, ssr bool, pattern string, pageId string, 
 				}
 
 				SveltePage(response, &SveltePageOptions{
-					Ssr: ssr,
-					Props: map[string]interface{}{
-						"page":          pageId,
-						"header":        request.HttpRequest.Header,
-						"multipartForm": request.HttpRequest.MultipartForm,
-						"form":          request.HttpRequest.Form,
-						"postForm":      request.HttpRequest.PostForm,
-					},
+					Ssr:     ssr,
+					Props:   map[string]interface{}{"page": pageId},
 					Globals: globals,
 				})
 			})

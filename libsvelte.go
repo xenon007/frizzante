@@ -162,9 +162,19 @@ func SveltePrepareEnd() {
 func render(response *Response, stringProps string, globals map[string]v8go.FunctionCallback) (string, string, error) {
 	renderFileName := filepath.Join("www", "dist", "server", "render.server.js")
 
-	renderEsmBytes, readError := response.server.embeddedFileSystem.ReadFile(renderFileName)
-	if readError != nil {
-		return "", "", readError
+	var renderEsmBytes []byte
+	if "1" == os.Getenv("DEV") {
+		renderEsmBytesLocal, readError := os.ReadFile(renderFileName)
+		if readError != nil {
+			return "", "", readError
+		}
+		renderEsmBytes = renderEsmBytesLocal
+	} else {
+		renderEsmBytesLocal, readError := response.server.embeddedFileSystem.ReadFile(renderFileName)
+		if readError != nil {
+			return "", "", readError
+		}
+		renderEsmBytes = renderEsmBytesLocal
 	}
 
 	renderEsm := string(renderEsmBytes)
@@ -259,10 +269,23 @@ func SveltePage(response *Response, options *SveltePageOptions) {
 	}
 
 	fileNameIndex := filepath.Join("www", "dist", "client", ".frizzante", "vite-project", "index.html")
-	indexBytes, readError := response.server.embeddedFileSystem.ReadFile(fileNameIndex)
-	if readError != nil {
-		ServerNotifyError(response.server, readError)
-		return
+
+	var indexBytes []byte
+
+	if "1" == os.Getenv("DEV") {
+		indexBytesLocal, readError := os.ReadFile(fileNameIndex)
+		if readError != nil {
+			ServerNotifyError(response.server, readError)
+			return
+		}
+		indexBytes = indexBytesLocal
+	} else {
+		indexBytesLocal, readError := response.server.embeddedFileSystem.ReadFile(fileNameIndex)
+		if readError != nil {
+			ServerNotifyError(response.server, readError)
+			return
+		}
+		indexBytes = indexBytesLocal
 	}
 
 	bytesProps, jsonError := json.Marshal(optionsLocal.Props)
