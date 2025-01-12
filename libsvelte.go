@@ -15,91 +15,79 @@ import (
 var svelteRenderToolsFileSystem embed.FS
 
 func SveltePrepareStart() {
-	indexHtml, indexHtmlError := svelteRenderToolsFileSystem.ReadFile("vite-project/index.html")
-	if indexHtmlError != nil {
-		panic(indexHtmlError)
-	}
-	indexHtmlSpa, indexHtmlSpaError := svelteRenderToolsFileSystem.ReadFile("vite-project/index.spa.html")
-	if indexHtmlSpaError != nil {
-		panic(indexHtmlSpaError)
-	}
-	renderClientJs, renderClientJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.js")
-	if renderClientJsError != nil {
-		panic(renderClientJsError)
-	}
-	renderClientSpaJs, renderClientSpaJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.spa.js")
-	if renderClientSpaJsError != nil {
-		panic(renderClientSpaJsError)
-	}
-	renderClientSpaSvelte, renderClientSpaSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.svelte")
-	if renderClientSpaSvelteError != nil {
-		panic(renderClientSpaSvelteError)
-	}
-	renderServerJs, renderServerJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.js")
-	if renderServerJsError != nil {
-		panic(renderServerJsError)
-	}
-	renderServerSvelte, renderServerSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.svelte")
-	if renderServerSvelteError != nil {
-		panic(renderServerSvelteError)
-	}
 	asyncSvelte, asyncSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/async.svelte")
 	if asyncSvelteError != nil {
 		panic(asyncSvelteError)
 	}
 
-	if !Exists("www/frizzante/vite-project") {
-		err := os.MkdirAll("www/frizzante/vite-project", os.ModePerm)
+	indexHtml, indexHtmlError := svelteRenderToolsFileSystem.ReadFile("vite-project/index.html")
+	if indexHtmlError != nil {
+		panic(indexHtmlError)
+	}
+
+	renderClientJs, renderClientJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.js")
+	if renderClientJsError != nil {
+		panic(renderClientJsError)
+	}
+
+	renderClientSvelte, renderClientSpaSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.svelte")
+	if renderClientSpaSvelteError != nil {
+		panic(renderClientSpaSvelteError)
+	}
+
+	renderServerJs, renderServerJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.js")
+	if renderServerJsError != nil {
+		panic(renderServerJsError)
+	}
+
+	renderServerSvelte, renderServerSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.svelte")
+	if renderServerSvelteError != nil {
+		panic(renderServerSvelteError)
+	}
+
+	if !Exists("www/.frizzante/vite-project") {
+		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	err := os.WriteFile("www/frizzante/vite-project/index.html", indexHtml, os.ModePerm)
+	err := os.WriteFile("www/.frizzante/vite-project/async.svelte", asyncSvelte, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/frizzante/vite-project/index.spa.html", indexHtmlSpa, os.ModePerm)
+	err = os.WriteFile("www/.frizzante/vite-project/index.html", indexHtml, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/frizzante/vite-project/render.client.js", renderClientJs, os.ModePerm)
+	err = os.WriteFile("www/.frizzante/vite-project/render.client.js", renderClientJs, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/frizzante/vite-project/render.client.spa.js", renderClientSpaJs, os.ModePerm)
+	err = os.WriteFile("www/.frizzante/vite-project/render.client.svelte", renderClientSvelte, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/frizzante/vite-project/render.client.spa.svelte", renderClientSpaSvelte, os.ModePerm)
+	err = os.WriteFile("www/.frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
+	err = os.WriteFile("www/.frizzante/vite-project/render.server.svelte", renderServerSvelte, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/frizzante/vite-project/render.server.svelte", renderServerSvelte, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.WriteFile("www/frizzante/vite-project/async.svelte", asyncSvelte, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
 }
 
 var sveltePages = map[string]string{}
 
 func SveltePreparePage(id string, fileName string) {
-	relativeFileName, err := filepath.Rel("www/frizzante/vite-project", fileName)
+	relativeFileName, err := filepath.Rel("www/.frizzante/vite-project", fileName)
 	if err != nil {
 		panic(err)
 	}
@@ -107,8 +95,8 @@ func SveltePreparePage(id string, fileName string) {
 }
 
 func SveltePrepareEnd() {
-	if !Exists("www/frizzante/vite-project") {
-		err := os.MkdirAll("www/frizzante/vite-project", os.ModePerm)
+	if !Exists("www/.frizzante/vite-project") {
+		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
@@ -136,7 +124,7 @@ func SveltePrepareEnd() {
 	renderClientSvelte := builder.String()
 
 	// Dump client loader.
-	err := os.WriteFile("www/frizzante/vite-project/render.client.svelte", []byte(renderClientSvelte), os.ModePerm)
+	err := os.WriteFile("www/.frizzante/vite-project/render.client.svelte", []byte(renderClientSvelte), os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
@@ -165,13 +153,13 @@ func SveltePrepareEnd() {
 	renderServerSvelte := builder.String()
 
 	// Dump server loader.
-	err = os.WriteFile("www/frizzante/vite-project/render.server.svelte", []byte(renderServerSvelte), os.ModePerm)
+	err = os.WriteFile("www/.frizzante/vite-project/render.server.svelte", []byte(renderServerSvelte), os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func render(response *Response, stringProps string) (string, string, error) {
+func render(response *Response, stringProps string, globals map[string]v8go.FunctionCallback) (string, string, error) {
 	renderFileName := filepath.Join("www", "dist", "server", "render.server.js")
 
 	renderEsmBytes, readError := response.server.embeddedFileSystem.ReadFile(renderFileName)
@@ -207,24 +195,41 @@ func render(response *Response, stringProps string) (string, string, error) {
 
 	head := ""
 	body := ""
-	_, destroy, javaScriptError := JavaScriptRun(
-		doneCjs, map[string]v8go.FunctionCallback{
-			"head": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
-				args := info.Args()
-				if len(args) > 0 {
-					head = args[0].String()
-				}
-				return nil
-			},
-			"body": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
-				args := info.Args()
-				if len(args) > 0 {
-					body = args[0].String()
-				}
-				return nil
-			},
+	allGlobals := map[string]v8go.FunctionCallback{
+		"inspect": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			args := info.Args()
+			if len(args) > 0 {
+				message := args[0].String()
+				println(message)
+			}
+			return nil
 		},
-	)
+		"head": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			args := info.Args()
+			if len(args) > 0 {
+				head = args[0].String()
+			}
+			return nil
+		},
+		"body": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+			args := info.Args()
+			if len(args) > 0 {
+				body = args[0].String()
+			}
+			return nil
+		},
+	}
+
+	for key, value := range globals {
+		_, exists := globals[key]
+		if exists {
+			continue
+		}
+
+		globals[key] = value
+	}
+
+	_, destroy, javaScriptError := JavaScriptRun(doneCjs, allGlobals)
 	if javaScriptError != nil {
 		return head, body, javaScriptError
 	}
@@ -234,8 +239,9 @@ func render(response *Response, stringProps string) (string, string, error) {
 }
 
 type SveltePageOptions struct {
-	Ssr   bool
-	Props map[string]interface{}
+	Ssr     bool
+	Props   map[string]interface{}
+	Globals map[string]v8go.FunctionCallback
 }
 
 // SveltePage renders and echos a svelte page.
@@ -244,16 +250,18 @@ func SveltePage(response *Response, options *SveltePageOptions) {
 
 	if nil == options {
 		optionsLocal = &SveltePageOptions{
-			Ssr:   true,
-			Props: map[string]interface{}{},
+			Ssr:     true,
+			Props:   map[string]interface{}{},
+			Globals: map[string]v8go.FunctionCallback{},
 		}
 	} else {
 		optionsLocal = options
 	}
 
-	fileNameIndex := filepath.Join("www", "dist", "client", "frizzante", "vite-project", "index.html")
+	fileNameIndex := filepath.Join("www", "dist", "client", ".frizzante", "vite-project", "index.html")
 	indexBytes, readError := response.server.embeddedFileSystem.ReadFile(fileNameIndex)
 	if readError != nil {
+		ServerNotifyError(response.server, readError)
 		return
 	}
 
@@ -267,7 +275,7 @@ func SveltePage(response *Response, options *SveltePageOptions) {
 	head := ""
 	body := ""
 	if optionsLocal.Ssr {
-		headLocal, bodyLocal, renderError := render(response, stringProps)
+		headLocal, bodyLocal, renderError := render(response, stringProps, optionsLocal.Globals)
 		if renderError != nil {
 			ServerNotifyError(response.server, renderError)
 			return

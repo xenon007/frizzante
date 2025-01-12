@@ -1,6 +1,7 @@
 package frizzante
 
 import (
+	"rogchap.com/v8go"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ func TestEchoSvelteWithSsr(test *testing.T) {
 				"page": "welcome",
 				"name": "world",
 			},
+			Globals: map[string]v8go.FunctionCallback{},
 		})
 	})
 	go ServerStart(server)
@@ -54,6 +56,7 @@ func TestEchoSvelteWithoutSsr(test *testing.T) {
 				"page": "welcome",
 				"name": "world",
 			},
+			Globals: map[string]v8go.FunctionCallback{},
 		})
 	})
 	go ServerStart(server)

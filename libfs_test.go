@@ -7,7 +7,7 @@ import (
 
 //go:embed libfs.go
 //go:embed .github
-//go:embed www/dist/*
+//go:embed www/dist/*/**
 var embeddedFileSystem embed.FS
 
 func TestEmbeddedExists(test *testing.T) {

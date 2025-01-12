@@ -3,5 +3,5 @@
 </script>
 
 {#await from then Component}
-    <Component.default name="world" {...data}/>
+    <Component.default {...data}/>
 {/await}

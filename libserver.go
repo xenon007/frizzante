@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"rogchap.com/v8go"
 	"strings"
 	"sync"
 	"time"
@@ -318,6 +319,33 @@ func ServerStop(self *Server) {
 	if err != nil {
 		panic(err.Error())
 	}
+}
+
+// ServerSetSveltePage sets a request handler for the given pattern,
+// tries to serve any file found in www/dist/client and finally serves the
+// given svelte page if no file is found.
+func ServerSetSveltePage(self *Server, ssr bool, pattern string, pageId string, globals map[string]v8go.FunctionCallback) {
+	ServerOnRequest(self, pattern, func(server *Server, request *Request, response *Response) {
+		EmbeddedFileOrElse(request, response, func() {
+			FileOrElse(request, response, func() {
+				if nil == globals {
+					globals = map[string]v8go.FunctionCallback{}
+				}
+
+				SveltePage(response, &SveltePageOptions{
+					Ssr: ssr,
+					Props: map[string]interface{}{
+						"page":          pageId,
+						"header":        request.HttpRequest.Header,
+						"multipartForm": request.HttpRequest.MultipartForm,
+						"form":          request.HttpRequest.Form,
+						"postForm":      request.HttpRequest.PostForm,
+					},
+					Globals: globals,
+				})
+			})
+		})
+	})
 }
 
 // ServerOnRequest registers a handler function for the given pattern.

@@ -1,4 +1,4 @@
-import { hydrate } from "svelte";
-import RenderServer from "./render.server.svelte";
+import { mount } from "svelte";
+import RenderClient from "./render.client.svelte";
 // @ts-ignore
-hydrate(RenderServer, { target: target(), props: props() });
+mount(RenderClient, { target: target(), props: props() });
