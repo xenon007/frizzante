@@ -9,7 +9,7 @@ git clone https://github.com/razshare/frizzante-starter
 > [!NOTE]
 > Make sure you have [Go](https://go.dev/doc/install) and [Bun](https://bun.sh) installed.\
 > If you'd rather use a different runtime than Bun to update your javascript dependencies,
-> see [makefile, section "update"](https://github.com/razshare/frizzante-starter/blob/master/makefile#L1-L6).
+> see [makefile, section "update"](https://github.com/razshare/frizzante-starter/blob/main/makefile#L1-L3).
 
 Update dependencies
 
