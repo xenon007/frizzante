@@ -31,3 +31,10 @@ go.work.sum
 *.pem
 *.crt
 *.key
+
+# Frizzante
+/out
+/www/.frizzante
+/www/dist/client/assets
+/www/dist/client/.frizzante/vite-project/index.html
+/www/dist/server/render.server.js
