@@ -1,4 +1,4 @@
-<style>
+<style global>
     .content {
         position: fixed;
         left: 0;
@@ -6,7 +6,7 @@
         top: 0;
         bottom: 0;
         background: #1e1e2e;
-        color: #ed6f49;
+        color: cadetblue;
         display: grid;
         justify-content: center;
         align-content: center;

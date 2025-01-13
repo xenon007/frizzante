@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestEchoSvelteWithSsr(test *testing.T) {
+func TestEchoSveltePageModeServer(test *testing.T) {
 	server := ServerCreate()
 	ServerWithPort(server, 8083)
 	ServerWithHostName(server, "127.0.0.1")
@@ -15,12 +15,12 @@ func TestEchoSvelteWithSsr(test *testing.T) {
 	ServerOnError(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
-		SveltePage(response, &SveltePageOptions{
-			Ssr: true,
+	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
+		EchoSveltePage(response, &SveltePageConfiguration{
+			Render: ModeServer,
 			Props: map[string]interface{}{
-				"page": "welcome",
-				"name": "world",
+				"pageId": "welcome",
+				"name":   "world",
 			},
 			Globals: map[string]v8go.FunctionCallback{},
 		})
@@ -41,7 +41,7 @@ func TestEchoSvelteWithSsr(test *testing.T) {
 	}
 }
 
-func TestEchoSvelteWithoutSsr(test *testing.T) {
+func TestEchoSveltePageModeClient(test *testing.T) {
 	server := ServerCreate()
 	ServerWithPort(server, 8084)
 	ServerWithHostName(server, "127.0.0.1")
@@ -49,12 +49,12 @@ func TestEchoSvelteWithoutSsr(test *testing.T) {
 	ServerOnError(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
-		SveltePage(response, &SveltePageOptions{
-			Ssr: false,
+	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
+		EchoSveltePage(response, &SveltePageConfiguration{
+			Render: ModeClient,
 			Props: map[string]interface{}{
-				"page": "welcome",
-				"name": "world",
+				"pageId": "welcome",
+				"name":   "world",
 			},
 			Globals: map[string]v8go.FunctionCallback{},
 		})

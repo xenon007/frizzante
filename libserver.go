@@ -3,11 +3,14 @@ package frizzante
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"rogchap.com/v8go"
@@ -17,23 +20,24 @@ import (
 )
 
 type Server struct {
-	hostName           string
-	port               int
-	securePort         int
-	server             *http.Server
-	mux                *http.ServeMux
-	sessions           map[string]*net.Conn
-	readTimeout        time.Duration
-	writeTimeout       time.Duration
-	maxHeaderBytes     int
-	errorLogger        *log.Logger
-	informationLogger  *log.Logger
-	certificate        string
-	certificateKey     string
-	informationHandler []func(string)
-	errorHandler       []func(error)
-	temporaryDirectory string
-	embeddedFileSystem embed.FS
+	hostName               string
+	port                   int
+	securePort             int
+	multipartFormMaxMemory int64
+	server                 *http.Server
+	mux                    *http.ServeMux
+	sessions               map[string]*net.Conn
+	readTimeout            time.Duration
+	writeTimeout           time.Duration
+	maxHeaderBytes         int
+	errorLogger            *log.Logger
+	informationLogger      *log.Logger
+	certificate            string
+	certificateKey         string
+	informationHandler     []func(string)
+	errorHandler           []func(error)
+	temporaryDirectory     string
+	embeddedFileSystem     embed.FS
 }
 
 // ServerCreate creates a server.
@@ -56,6 +60,11 @@ func ServerCreate() *Server {
 		errorHandler:       []func(error){},
 		temporaryDirectory: ".temp",
 	}
+}
+
+// ServerWithMultipartFormMaxMemory set the maximum memory for multipart forms before they fall back to disk.
+func ServerWithMultipartFormMaxMemory(self *Server, multipartFormMaxMemory int64) {
+	self.multipartFormMaxMemory = multipartFormMaxMemory
 }
 
 // ServerWithHostName sets the host name.
@@ -241,17 +250,55 @@ func Redirect(response *Response, location string, statusCode int) {
 	Echo(response, "")
 }
 
-// RedirectToSecure tries to redirect the request to the https server with status code 302.
-//
-// When the request is already secure, RedirectToSecure returns false.
-func RedirectToSecure(request *Request, response *Response) bool {
-	return RedirectToSecureWithStatusCode(request, response, 302)
+// GetJson reads the contents of the request as json  and stores the result into value.
+func GetJson[T any](request *Request, value *T) {
+	bytes, readAllError := io.ReadAll(request.HttpRequest.Body)
+	if readAllError != nil {
+		ServerNotifyError(request.server, readAllError)
+		return
+	}
+	unmarshalError := json.Unmarshal(bytes, &value)
+	if unmarshalError != nil {
+		ServerNotifyError(request.server, unmarshalError)
+	}
 }
 
-// RedirectToSecureWithStatusCode tries to redirect the request to the https server.
+// GetForm reads the content of the request as a form and returns the value.
+func GetForm(request *Request) *url.Values {
+	parseMultipartFormError := request.HttpRequest.ParseMultipartForm(request.server.multipartFormMaxMemory)
+	if parseMultipartFormError != nil {
+		if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
+			ServerNotifyError(request.server, parseMultipartFormError)
+		}
+
+		parseFormError := request.HttpRequest.ParseForm()
+		if parseFormError != nil {
+			ServerNotifyError(request.server, parseFormError)
+		}
+	}
+
+	return &request.HttpRequest.Form
+}
+
+// GetQuery reads a query field from the request and returns the value.
+func GetQuery(request *Request, name string) string {
+	return request.HttpRequest.URL.Query().Get(name)
+}
+
+// GetHeader reads a header field from the request and returns the value.
+func GetHeader(request *Request, key string) string {
+	return request.HttpRequest.Header.Get(key)
+}
+
+// GetContentType reads the Content-Type header field from the request and returns the value.
+func GetContentType(request *Request) string {
+	return request.HttpRequest.Header.Get("Content-Type")
+}
+
+// RedirectToSecure tries to redirect the request to the https server.
 //
-// When the request is already secure, RedirectToSecureWithStatusCode returns false.
-func RedirectToSecureWithStatusCode(request *Request, response *Response, statusCode int) bool {
+// When the request is already secure, RedirectToSecure returns false.
+func RedirectToSecure(request *Request, response *Response, statusCode int) bool {
 	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
 		return false
 	}
@@ -321,31 +368,66 @@ func ServerStop(self *Server) {
 	}
 }
 
-// ServerSetSveltePage sets a request handler for the given pattern,
-// tries to serve any file found in www/dist/client and finally serves the
-// given svelte page if no file is found.
-func ServerSetSveltePage(self *Server, ssr bool, pattern string, pageId string, globals map[string]v8go.FunctionCallback) {
-	ServerOnRequest(self, pattern, func(server *Server, request *Request, response *Response) {
+var sveltePagesToPaths = map[string]string{}
+
+// ServerWithSveltePage creates a request handler that serves a svelte page.
+func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request, *Response) *SveltePageConfiguration) {
+	patternParts := strings.Split(pattern, " ")
+	if len(patternParts) > 1 {
+		sveltePagesToPaths[pageId] = patternParts[1]
+	}
+
+	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
 		EmbeddedFileOrElse(request, response, func() {
 			FileOrElse(request, response, func() {
-				if nil == globals {
-					globals = map[string]v8go.FunctionCallback{}
+				options := configure(request, response)
+
+				if nil == options {
+					options = &SveltePageConfiguration{
+						Render: ModeFull,
+					}
 				}
 
-				SveltePage(response, &SveltePageOptions{
-					Ssr:     ssr,
-					Props:   map[string]interface{}{"page": pageId},
-					Globals: globals,
-				})
+				if nil == options.Globals {
+					options.Globals = map[string]v8go.FunctionCallback{}
+				}
+
+				if nil == options.Props {
+					options.Props = map[string]interface{}{}
+				}
+
+				parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
+				if parseMultipartFormError != nil {
+					if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
+						ServerNotifyError(server, parseMultipartFormError)
+					}
+
+					parseFormError := request.HttpRequest.ParseForm()
+					if parseFormError != nil {
+						ServerNotifyError(server, parseFormError)
+					}
+				}
+
+				options.Globals["query"] = func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+
+					return nil
+				}
+
+				options.Props["pagesToPaths"] = sveltePagesToPaths
+				options.Props["pageId"] = pageId
+				options.Props["query"] = request.HttpRequest.URL.Query()
+				options.Props["form"] = request.HttpRequest.Form
+
+				EchoSveltePage(response, options)
 			})
 		})
 	})
 }
 
-// ServerOnRequest registers a handler function for the given pattern.
+// ServerWithRequestHandler registers a handler function for the given pattern.
 //
-// If the given pattern conflicts with one that is already registered, ServerOnRequest panics.
-func ServerOnRequest(
+// If the given pattern conflicts with one that is already registered, ServerWithRequestHandler panics.
+func ServerWithRequestHandler(
 	self *Server,
 	pattern string,
 	callback func(server *Server, request *Request, response *Response),
@@ -418,8 +500,6 @@ func ServerLogError(self *Server, err error) {
 
 // Status sets the status code.
 //
-// The status message will be inferred automatically based on the code.
-//
 // This will lock the status, which makes it
 // so that the next time you invoke this
 // function it will fail with an error.
@@ -484,8 +564,8 @@ func Echo(self *Response, content string) {
 	Send(self, []byte(content))
 }
 
-// Accept checks if the incoming request specifies specific content-types.
-func Accept(self *Request, mimes ...string) bool {
+// HasContentTypes checks if the incoming request has specific content-types.
+func HasContentTypes(self *Request, mimes ...string) bool {
 	requestedMime := self.HttpRequest.Header.Get("content-type")
 	for _, acceptedMime := range mimes {
 		if acceptedMime == "*" || strings.HasPrefix(requestedMime, acceptedMime) {

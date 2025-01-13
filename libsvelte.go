@@ -7,8 +7,17 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 	"os"
 	"path/filepath"
+	"regexp"
 	"rogchap.com/v8go"
 	"strings"
+)
+
+type RenderMode int64
+
+const (
+	ModeServer RenderMode = 0 // Render only on the server.
+	ModeClient RenderMode = 1 // Render only on the client.
+	ModeFull   RenderMode = 2 // Render on both the server and the client.
 )
 
 //go:embed vite-project/*
@@ -30,19 +39,9 @@ func SveltePrepareStart() {
 		panic(renderClientJsError)
 	}
 
-	renderClientSvelte, renderClientSpaSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.svelte")
-	if renderClientSpaSvelteError != nil {
-		panic(renderClientSpaSvelteError)
-	}
-
 	renderServerJs, renderServerJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.js")
 	if renderServerJsError != nil {
 		panic(renderServerJsError)
-	}
-
-	renderServerSvelte, renderServerSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.svelte")
-	if renderServerSvelteError != nil {
-		panic(renderServerSvelteError)
 	}
 
 	if !Exists("www/.frizzante/vite-project") {
@@ -67,31 +66,20 @@ func SveltePrepareStart() {
 		panic(err)
 	}
 
-	err = os.WriteFile("www/.frizzante/vite-project/render.client.svelte", renderClientSvelte, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
 	err = os.WriteFile("www/.frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
-
-	err = os.WriteFile("www/.frizzante/vite-project/render.server.svelte", renderServerSvelte, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
 }
 
-var sveltePages = map[string]string{}
+var sveltePagesToFileNames = map[string]string{}
 
 func SveltePreparePage(id string, fileName string) {
 	relativeFileName, err := filepath.Rel("www/.frizzante/vite-project", fileName)
 	if err != nil {
 		panic(err)
 	}
-	sveltePages[id] = fmt.Sprintf("./%s", relativeFileName)
+	sveltePagesToFileNames[id] = fmt.Sprintf("./%s", relativeFileName)
 }
 
 func SveltePrepareEnd() {
@@ -103,48 +91,54 @@ func SveltePrepareEnd() {
 	}
 
 	// Build client loader.
+	renderClientSvelte, readError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.svelte")
+	if readError != nil {
+		panic(readError)
+	}
+
 	var builder strings.Builder
-	builder.WriteString("<script>\n")
-	builder.WriteString("    import Async from './async.svelte'\n")
-	builder.WriteString("    let {page, ...data} = $props()\n")
-	builder.WriteString("</script>\n")
 	counter := 0
-	for id, fileName := range sveltePages {
+	for id, fileName := range sveltePagesToFileNames {
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === page}\n", id))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === reactivePageId}\n", id))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === page}\n", id))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", id))
 		}
-		builder.WriteString(fmt.Sprintf("    <Async from={import('%s')} {...data} />\n", fileName))
+		builder.WriteString(fmt.Sprintf("    <Async from={import('%s')} />\n", fileName))
 		counter++
 	}
 	if counter > 0 {
 		builder.WriteString("{/if}")
 	}
-	renderClientSvelte := builder.String()
+	renderClientSvelteString := strings.Replace(string(renderClientSvelte), "<!--app-router-->", builder.String(), 1)
 
 	// Dump client loader.
-	err := os.WriteFile("www/.frizzante/vite-project/render.client.svelte", []byte(renderClientSvelte), os.ModePerm)
-	if err != nil {
-		panic(err)
+	marshalError := os.WriteFile("www/.frizzante/vite-project/render.client.svelte", []byte(renderClientSvelteString), os.ModePerm)
+	if marshalError != nil {
+		panic(marshalError)
 	}
 
 	// Build server loader.
 	builder.Reset()
 	builder.WriteString("<script>\n")
-	for id, fileName := range sveltePages {
+	for id, fileName := range sveltePagesToFileNames {
 		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(id), fileName))
 	}
-	builder.WriteString("    let {page, ...data} = $props()\n")
+	builder.WriteString("    import {setContext} from 'svelte'\n")
+	builder.WriteString("    let {pageId, pagesToPaths, ...data} = $props()\n")
+	builder.WriteString("    let reactiveData = $state({...data})\n")
+	builder.WriteString("    setContext(\"data\", reactiveData)\n")
+	builder.WriteString("    setContext(\"page\", page)\n")
+	builder.WriteString("    function page(){}\n")
 	builder.WriteString("</script>\n")
 	counter = 0
-	for id, _ := range sveltePages {
+	for id, _ := range sveltePagesToFileNames {
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === page}\n", id))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", id))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === page}\n", id))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", id))
 		}
-		builder.WriteString(fmt.Sprintf("    <%s {...data} />\n", strings.ToUpper(id)))
+		builder.WriteString(fmt.Sprintf("    <%s />\n", strings.ToUpper(id)))
 		counter++
 	}
 	if counter > 0 {
@@ -153,9 +147,9 @@ func SveltePrepareEnd() {
 	renderServerSvelte := builder.String()
 
 	// Dump server loader.
-	err = os.WriteFile("www/.frizzante/vite-project/render.server.svelte", []byte(renderServerSvelte), os.ModePerm)
-	if err != nil {
-		panic(err)
+	marshalError = os.WriteFile("www/.frizzante/vite-project/render.server.svelte", []byte(renderServerSvelte), os.ModePerm)
+	if marshalError != nil {
+		panic(marshalError)
 	}
 }
 
@@ -236,7 +230,7 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 			continue
 		}
 
-		globals[key] = value
+		allGlobals[key] = value
 	}
 
 	_, destroy, javaScriptError := JavaScriptRun(doneCjs, allGlobals)
@@ -248,24 +242,22 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 	return head, body, nil
 }
 
-type SveltePageOptions struct {
-	Ssr     bool
+type SveltePageConfiguration struct {
+	Render  RenderMode
 	Props   map[string]interface{}
 	Globals map[string]v8go.FunctionCallback
 }
 
-// SveltePage renders and echos a svelte page.
-func SveltePage(response *Response, options *SveltePageOptions) {
-	var optionsLocal *SveltePageOptions
+var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 
-	if nil == options {
-		optionsLocal = &SveltePageOptions{
-			Ssr:     true,
+// EchoSveltePage renders and echos a svelte page.
+func EchoSveltePage(response *Response, configuration *SveltePageConfiguration) {
+	if nil == configuration {
+		configuration = &SveltePageConfiguration{
+			Render:  ModeFull,
 			Props:   map[string]interface{}{},
 			Globals: map[string]v8go.FunctionCallback{},
 		}
-	} else {
-		optionsLocal = options
 	}
 
 	fileNameIndex := filepath.Join("www", "dist", "client", ".frizzante", "vite-project", "index.html")
@@ -288,50 +280,98 @@ func SveltePage(response *Response, options *SveltePageOptions) {
 		indexBytes = indexBytesLocal
 	}
 
-	bytesProps, jsonError := json.Marshal(optionsLocal.Props)
+	bytesProps, jsonError := json.Marshal(configuration.Props)
 	if jsonError != nil {
 		ServerNotifyError(response.server, jsonError)
 		return
 	}
 	stringProps := string(bytesProps)
 
-	head := ""
-	body := ""
-	if optionsLocal.Ssr {
-		headLocal, bodyLocal, renderError := render(response, stringProps, optionsLocal.Globals)
+	var index string
+	if ModeFull == configuration.Render {
+		head, body, renderError := render(response, stringProps, configuration.Globals)
 		if renderError != nil {
 			ServerNotifyError(response.server, renderError)
 			return
 		}
-		head = headLocal
-		body = bodyLocal
-	}
-
-	stringIndex := strings.Replace(
-		strings.Replace(
+		index = strings.Replace(
 			strings.Replace(
 				strings.Replace(
-					string(indexBytes),
-					"<!--app-target-->",
-					`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`,
+					strings.Replace(
+						string(indexBytes),
+						"<!--app-target-->",
+						`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`,
+						1,
+					),
+					"<!--app-body-->",
+					fmt.Sprintf(`<div id="app">%s</div>`, body),
 					1,
 				),
-				"<!--app-body-->",
-				fmt.Sprintf(`<div id="app">%s</div>`, body),
+				"<!--app-head-->",
+				head,
 				1,
 			),
-			"<!--app-head-->",
-			head,
+			"<!--app-data-->",
+			fmt.Sprintf(
+				`<script type="application/javascript">function data(){return %s}</script>`,
+				stringProps,
+			),
 			1,
-		),
-		"<!--app-props-->",
-		fmt.Sprintf(
-			`<script type="application/javascript">function props(){return %s}</script>`,
-			stringProps,
-		),
-		1,
-	)
+		)
+	} else if ModeClient == configuration.Render {
+		index = strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					strings.Replace(
+						string(indexBytes),
+						"<!--app-target-->",
+						`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`,
+						1,
+					),
+					"<!--app-body-->",
+					`<div id="app"></div>`,
+					1,
+				),
+				"<!--app-head-->",
+				"",
+				1,
+			),
+			"<!--app-data-->",
+			fmt.Sprintf(
+				`<script type="application/javascript">function data(){return %s}</script>`,
+				stringProps,
+			),
+			1,
+		)
+	} else if ModeServer == configuration.Render {
+		head, body, renderError := render(response, stringProps, configuration.Globals)
+		if renderError != nil {
+			ServerNotifyError(response.server, renderError)
+			return
+		}
+		index = strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					strings.Replace(
+						noScriptPattern.ReplaceAllString(string(indexBytes), ""),
+						"<!--app-target-->",
+						``,
+						1,
+					),
+					"<!--app-body-->",
+					fmt.Sprintf(`<div id="app">%s</div>`, body),
+					1,
+				),
+				"<!--app-head-->",
+				head,
+				1,
+			),
+			"<!--app-data-->",
+			"",
+			1,
+		)
+	}
 
 	Header(response, "Content-Type", "text/html")
-	Echo(response, stringIndex)
+	Echo(response, index)
 }

@@ -177,7 +177,7 @@ func TestServerOnRequest(test *testing.T) {
 	server := ServerCreate()
 	ServerWithPort(server, 8080)
 	expected := "hello"
-	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		Echo(response, expected)
 	})
 	ServerOnError(server, func(err error) {
@@ -232,7 +232,7 @@ func TestStatus(test *testing.T) {
 	server := ServerCreate()
 	ServerWithPort(server, 8081)
 	expected := 201
-	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		Status(response, expected)
 		Echo(response, "Ok")
 	})
@@ -261,7 +261,7 @@ func TestHeader(test *testing.T) {
 	server := ServerCreate()
 	ServerWithPort(server, 8082)
 	expected := "application/json"
-	ServerOnRequest(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		Header(response, "Content-Type", expected)
 		Echo(response, "{}")
 	})

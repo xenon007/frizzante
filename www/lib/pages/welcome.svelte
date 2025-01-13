@@ -1,7 +1,7 @@
 <script>
     import Layout from '$lib/components/layout.svelte'
-    import Greeting from '$lib/components/greeting.svelte'
-    const { name = "world" } = $props()
+    import {getContext} from "svelte";
+    const data = getContext("data")
 </script>
 
 <svelte:head>
@@ -9,6 +9,5 @@
 </svelte:head>
 
 <Layout>
-    <Greeting {name} />
-    <a href="/about">Go to about</a>
+    <h1>Hello {data.name}.</h1>
 </Layout>
