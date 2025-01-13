@@ -10,12 +10,11 @@ import (
 var client http.Client
 
 // HttpGet sends an http request using the GET verb.
-func HttpGet(path string) (string, error) {
-	return HttpGetWithHeader(path, map[string]string{})
-}
+func HttpGet(path string, header map[string]string) (string, error) {
+	if nil == header {
+		header = map[string]string{}
+	}
 
-// HttpGetWithHeader sends an http request using the GET verb.
-func HttpGetWithHeader(path string, header map[string]string) (string, error) {
 	request, requestError := http.NewRequest("GET", path, nil)
 	if requestError != nil {
 		return "", requestError
@@ -45,12 +44,11 @@ func HttpGetWithHeader(path string, header map[string]string) (string, error) {
 }
 
 // HttpDelete sends an http request using the DELETE verb.
-func HttpDelete(path string) error {
-	return HttpDeleteWithHeader(path, map[string]string{})
-}
+func HttpDelete(path string, header map[string]string) error {
+	if nil == header {
+		header = map[string]string{}
+	}
 
-// HttpDeleteWithHeader sends an http request using the DELETE verb.
-func HttpDeleteWithHeader(path string, header map[string]string) error {
 	request, requestError := http.NewRequest("DELETE", path, nil)
 	if requestError != nil {
 		return requestError
@@ -74,12 +72,11 @@ func HttpDeleteWithHeader(path string, header map[string]string) error {
 }
 
 // HttpPost sends an http request using the POST verb.
-func HttpPost(path string, contentType string, contents string) (string, error) {
-	return PostWithHeader(path, map[string]string{"Content-Type": contentType}, contents)
-}
+func HttpPost(path string, header map[string]string, contents string) (string, error) {
+	if nil == header {
+		header = map[string]string{}
+	}
 
-// PostWithHeader sends an http request using the POST verb.
-func PostWithHeader(path string, header map[string]string, contents string) (string, error) {
 	request, requestError := http.NewRequest("POST", path, bytes.NewBuffer([]byte(contents)))
 	if requestError != nil {
 		return "", requestError
@@ -110,12 +107,11 @@ func PostWithHeader(path string, header map[string]string, contents string) (str
 }
 
 // HttpPut sends an http request using the PUT verb.
-func HttpPut(path string, contentType string, contents string) (string, error) {
-	return PutWithHeader(path, map[string]string{"Content-Type": contentType}, contents)
-}
+func HttpPut(path string, header map[string]string, contents string) (string, error) {
+	if nil == header {
+		header = map[string]string{}
+	}
 
-// PutWithHeader sends an http request using the PUT verb.
-func PutWithHeader(path string, header map[string]string, contents string) (string, error) {
 	request, requestError := http.NewRequest("PUT", path, bytes.NewBuffer([]byte(contents)))
 	if requestError != nil {
 		return "", requestError

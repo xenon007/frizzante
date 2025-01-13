@@ -44,7 +44,7 @@ type Server struct {
 func ServerCreate() *Server {
 	return &Server{
 		hostName:           "127.0.0.1",
-		port:               8080,
+		port:               8081,
 		securePort:         8383,
 		server:             nil,
 		mux:                http.NewServeMux(),
@@ -126,10 +126,10 @@ func ServerWithEmbeddedFileSystem(self *Server, embeddedFileSystem embed.FS) {
 	self.embeddedFileSystem = embeddedFileSystem
 }
 
-// ServerSetTemporaryFile sets a temporary file.
+// ServerTemporaryFileSave sets a temporary file.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func ServerSetTemporaryFile(self *Server, id string, contents string) {
+func ServerTemporaryFileSave(self *Server, id string, contents string) {
 	if len(id) > 255 {
 		ServerNotifyError(self, fmt.Errorf("temporary file id is too long"))
 		return
@@ -165,7 +165,7 @@ func ServerSetTemporaryFile(self *Server, id string, contents string) {
 
 	var file *os.File
 
-	if !ServerHasTemporaryFile(self, id) {
+	if !ServerTemporaryFileExists(self, id) {
 		fileLocal, createError := os.Create(fileName)
 		if createError != nil {
 			ServerNotifyError(self, createError)
@@ -194,8 +194,8 @@ func ServerSetTemporaryFile(self *Server, id string, contents string) {
 	}
 }
 
-// ServerGetTemporaryFile gets a temporary file.
-func ServerGetTemporaryFile(self *Server, id string) string {
+// ServerTemporaryFile gets the contents o a temporary file.
+func ServerTemporaryFile(self *Server, id string) string {
 	if strings.Contains(id, "../") {
 		ServerNotifyError(self, fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id))
 		return ""
@@ -214,10 +214,10 @@ func ServerGetTemporaryFile(self *Server, id string) string {
 	return string(contents)
 }
 
-// ServerHasTemporaryFile checks if a temporary file Exists.
+// ServerTemporaryFileExists checks if a temporary file Exists.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
-func ServerHasTemporaryFile(self *Server, id string) bool {
+func ServerTemporaryFileExists(self *Server, id string) bool {
 	if len(id) > 255 {
 		ServerNotifyError(self, fmt.Errorf("temporary file id is too long"))
 		return false
@@ -235,23 +235,16 @@ func ServerHasTemporaryFile(self *Server, id string) bool {
 	return Exists(fileName)
 }
 
-// ServerClearTemporaryDirectory clears the temporary directory.
-func ServerClearTemporaryDirectory(self *Server) {
+// ServerTemporaryDirectoryClear clears the temporary directory.
+func ServerTemporaryDirectoryClear(self *Server) {
 	err := os.RemoveAll(self.temporaryDirectory)
 	if err != nil {
 		ServerNotifyError(self, err)
 	}
 }
 
-// Redirect redirects the request.
-func Redirect(response *Response, location string, statusCode int) {
-	Status(response, statusCode)
-	Header(response, "Location", location)
-	Echo(response, "")
-}
-
-// GetJson reads the contents of the request as json  and stores the result into value.
-func GetJson[T any](request *Request, value *T) {
+// ReceiveJson reads the contents of the request as json  and stores the result into value.
+func ReceiveJson[T any](request *Request, value *T) {
 	bytes, readAllError := io.ReadAll(request.HttpRequest.Body)
 	if readAllError != nil {
 		ServerNotifyError(request.server, readAllError)
@@ -263,8 +256,8 @@ func GetJson[T any](request *Request, value *T) {
 	}
 }
 
-// GetForm reads the content of the request as a form and returns the value.
-func GetForm(request *Request) *url.Values {
+// ReceiveForm reads the content of the request as a form and returns the value.
+func ReceiveForm(request *Request) *url.Values {
 	parseMultipartFormError := request.HttpRequest.ParseMultipartForm(request.server.multipartFormMaxMemory)
 	if parseMultipartFormError != nil {
 		if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
@@ -280,35 +273,19 @@ func GetForm(request *Request) *url.Values {
 	return &request.HttpRequest.Form
 }
 
-// GetQuery reads a query field from the request and returns the value.
-func GetQuery(request *Request, name string) string {
+// ReceiveQuery reads a query field from the request and returns the value.
+func ReceiveQuery(request *Request, name string) string {
 	return request.HttpRequest.URL.Query().Get(name)
 }
 
-// GetHeader reads a header field from the request and returns the value.
-func GetHeader(request *Request, key string) string {
+// ReceiveHeader reads a header field from the request and returns the value.
+func ReceiveHeader(request *Request, key string) string {
 	return request.HttpRequest.Header.Get(key)
 }
 
-// GetContentType reads the Content-Type header field from the request and returns the value.
-func GetContentType(request *Request) string {
+// ReceiveContentType reads the Content-Type header field from the request and returns the value.
+func ReceiveContentType(request *Request) string {
 	return request.HttpRequest.Header.Get("Content-Type")
-}
-
-// RedirectToSecure tries to redirect the request to the https server.
-//
-// When the request is already secure, RedirectToSecure returns false.
-func RedirectToSecure(request *Request, response *Response, statusCode int) bool {
-	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
-		return false
-	}
-
-	insecureSuffix := fmt.Sprintf(":%d", request.server.port)
-	secureSuffix := fmt.Sprintf(":%d", request.server.securePort)
-	secureHost := strings.Replace(request.HttpRequest.Host, insecureSuffix, secureSuffix, 1)
-	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.HttpRequest.RequestURI)
-	Redirect(response, secureLocation, statusCode)
-	return true
 }
 
 // ServerStart starts the server.
@@ -498,14 +475,37 @@ func ServerLogError(self *Server, err error) {
 	self.errorLogger.Println(err.Error())
 }
 
-// Status sets the status code.
+// SendRedirect redirects the request.
+func SendRedirect(response *Response, location string, statusCode int) {
+	SendStatus(response, statusCode)
+	SendHeader(response, "Location", location)
+	SendEcho(response, "")
+}
+
+// SendRedirectToSecure tries to redirect the request to the https server.
+//
+// When the request is already secure, SendRedirectToSecure returns false.
+func SendRedirectToSecure(request *Request, response *Response, statusCode int) bool {
+	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
+		return false
+	}
+
+	insecureSuffix := fmt.Sprintf(":%d", request.server.port)
+	secureSuffix := fmt.Sprintf(":%d", request.server.securePort)
+	secureHost := strings.Replace(request.HttpRequest.Host, insecureSuffix, secureSuffix, 1)
+	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.HttpRequest.RequestURI)
+	SendRedirect(response, secureLocation, statusCode)
+	return true
+}
+
+// SendStatus sets the status code.
 //
 // This will lock the status, which makes it
 // so that the next time you invoke this
 // function it will fail with an error.
 //
 // You can retrieve this error using ServerOnError.
-func Status(self *Response, code int) {
+func SendStatus(self *Response, code int) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("status is locked"))
 		return
@@ -513,14 +513,14 @@ func Status(self *Response, code int) {
 	self.statusCode = code
 }
 
-// Header sets a header field.
+// SendHeader sets a header field.
 //
 // If the status has not been sent already, a default "200 OK" status will be sent immediately.
 //
 // This means the status will become locked and further attempts to send the status will fail with an error.
 //
 // You can retrieve this error using ServerOnError
-func Header(self *Response, key string, value string) {
+func SendHeader(self *Response, key string, value string) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("headers locked"))
 		return
@@ -529,14 +529,14 @@ func Header(self *Response, key string, value string) {
 	self.header.Set(key, value)
 }
 
-// Send sends binary safe content.
+// SendContent sends binary safe content.
 //
 // If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
 // You can retrieve this error using ServerOnError.
-func Send(self *Response, value []byte) {
+func SendContent(self *Response, content []byte) {
 	writer := *self.writer
 
 	if !self.lockedStatusAndHeader {
@@ -544,14 +544,14 @@ func Send(self *Response, value []byte) {
 		self.lockedStatusAndHeader = true
 	}
 
-	_, err := writer.Write(value)
+	_, err := writer.Write(content)
 	if err != nil {
 		ServerNotifyError(self.server, err)
 		return
 	}
 }
 
-// Echo sends utf-8 safe content.
+// SendEcho sends utf-8 safe content.
 //
 // If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
 //
@@ -560,14 +560,14 @@ func Send(self *Response, value []byte) {
 // You can retrieve this error using ServerOnError.
 //
 // See fmt.Sprintf.
-func Echo(self *Response, content string) {
-	Send(self, []byte(content))
+func SendEcho(self *Response, content string) {
+	SendContent(self, []byte(content))
 }
 
-// HasContentTypes checks if the incoming request has specific content-types.
-func HasContentTypes(self *Request, mimes ...string) bool {
+// VerifyContentType checks if the incoming request has any of the given content-types.
+func VerifyContentType(self *Request, contentTypes ...string) bool {
 	requestedMime := self.HttpRequest.Header.Get("content-type")
-	for _, acceptedMime := range mimes {
+	for _, acceptedMime := range contentTypes {
 		if acceptedMime == "*" || strings.HasPrefix(requestedMime, acceptedMime) {
 			return true
 		}
@@ -597,10 +597,10 @@ func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
 
 	length := fmt.Sprintf("%d", len(file))
 
-	Header(response, "content-type", mime)
-	Header(response, "content-length", length)
+	SendHeader(response, "content-type", mime)
+	SendHeader(response, "content-length", length)
 
-	Send(response, file)
+	SendContent(response, file)
 }
 
 func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()) {
@@ -629,10 +629,10 @@ func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()
 
 	length := fmt.Sprintf("%d", len(file))
 
-	Header(response, "content-type", mime)
-	Header(response, "content-length", length)
+	SendHeader(response, "content-type", mime)
+	SendHeader(response, "content-length", length)
 
-	Send(response, file)
+	SendContent(response, file)
 }
 
 func FileOrIndexElse(request *Request, response *Response, orElse func()) {
@@ -661,10 +661,10 @@ func FileOrIndexElse(request *Request, response *Response, orElse func()) {
 
 	length := fmt.Sprintf("%d", len(file))
 
-	Header(response, "content-type", mime)
-	Header(response, "content-length", length)
+	SendHeader(response, "content-type", mime)
+	SendHeader(response, "content-length", length)
 
-	Send(response, file)
+	SendContent(response, file)
 }
 
 func FileOrElse(request *Request, response *Response, orElse func()) {
@@ -685,8 +685,8 @@ func FileOrElse(request *Request, response *Response, orElse func()) {
 
 	length := fmt.Sprintf("%d", len(file))
 
-	Header(response, "content-type", mime)
-	Header(response, "content-length", length)
+	SendHeader(response, "content-type", mime)
+	SendHeader(response, "content-length", length)
 
-	Send(response, file)
+	SendContent(response, file)
 }

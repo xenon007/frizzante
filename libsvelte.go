@@ -372,6 +372,6 @@ func EchoSveltePage(response *Response, configuration *SveltePageConfiguration) 
 		)
 	}
 
-	Header(response, "Content-Type", "text/html")
-	Echo(response, index)
+	SendHeader(response, "Content-Type", "text/html")
+	SendEcho(response, index)
 }

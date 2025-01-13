@@ -9,7 +9,7 @@ import (
 
 func TestEchoSveltePageModeServer(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8083)
+	ServerWithPort(server, 8084)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
 	ServerOnError(server, func(err error) {
@@ -29,7 +29,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	expected := "<h1>Hello world.</h1>"
-	actual, getError := HttpGet("http://127.0.0.1:8083/")
+	actual, getError := HttpGet("http://127.0.0.1:8084/", nil)
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -43,7 +43,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 
 func TestEchoSveltePageModeClient(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8084)
+	ServerWithPort(server, 8085)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
 	ServerOnError(server, func(err error) {
@@ -63,7 +63,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	expected := "<div id=\"app\"></div>"
-	actual, getError := HttpGet("http://127.0.0.1:8084/")
+	actual, getError := HttpGet("http://127.0.0.1:8085/", nil)
 	if getError != nil {
 		test.Fatal(getError)
 	}

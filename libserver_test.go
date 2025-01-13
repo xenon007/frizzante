@@ -124,7 +124,7 @@ func TestServerSetTemporaryFile(test *testing.T) {
 	server := ServerCreate()
 	expected := "content"
 	ServerWithTemporaryDirectory(server, ".temp")
-	ServerSetTemporaryFile(server, "test", expected)
+	ServerTemporaryFileSave(server, "test", expected)
 	fileName := filepath.Join(".temp", "test")
 	if !Exists(fileName) {
 		test.Fatalf("server was expected to create a temporary '%s', but it failed to do so", fileName)
@@ -143,8 +143,8 @@ func TestServerGetTemporaryFile(test *testing.T) {
 	server := ServerCreate()
 	expected := "content"
 	ServerWithTemporaryDirectory(server, ".temp")
-	ServerSetTemporaryFile(server, "test", expected)
-	actual := ServerGetTemporaryFile(server, "test")
+	ServerTemporaryFileSave(server, "test", expected)
+	actual := ServerTemporaryFile(server, "test")
 	if actual != expected {
 		test.Fatalf("server temporary file was expected to contain '%s', received '%s' instead", expected, actual)
 	}
@@ -153,9 +153,9 @@ func TestServerGetTemporaryFile(test *testing.T) {
 func TestServerHasTemporaryFile(test *testing.T) {
 	server := ServerCreate()
 	ServerWithTemporaryDirectory(server, ".temp")
-	ServerSetTemporaryFile(server, "test", "test")
+	ServerTemporaryFileSave(server, "test", "test")
 	expected := true
-	actual := ServerHasTemporaryFile(server, "test")
+	actual := ServerTemporaryFileExists(server, "test")
 	if actual != expected {
 		test.Fatalf("server was expected to have a temporary file by the name of 'test'")
 	}
@@ -164,10 +164,10 @@ func TestServerHasTemporaryFile(test *testing.T) {
 func TestServerClearTemporaryDirectory(test *testing.T) {
 	server := ServerCreate()
 	ServerWithTemporaryDirectory(server, ".temp")
-	ServerSetTemporaryFile(server, "test", "test")
-	ServerClearTemporaryDirectory(server)
+	ServerTemporaryFileSave(server, "test", "test")
+	ServerTemporaryDirectoryClear(server)
 	expected := false
-	actual := ServerHasTemporaryFile(server, "test")
+	actual := ServerTemporaryFileExists(server, "test")
 	if actual != expected {
 		test.Fatalf("server was expected to not have a temporary file by the name of 'test'")
 	}
@@ -175,10 +175,10 @@ func TestServerClearTemporaryDirectory(test *testing.T) {
 
 func TestServerOnRequest(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8080)
+	ServerWithPort(server, 8081)
 	expected := "hello"
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
-		Echo(response, expected)
+		SendEcho(response, expected)
 	})
 	ServerOnError(server, func(err error) {
 		test.Fatal(err)
@@ -188,7 +188,7 @@ func TestServerOnRequest(test *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	actual, getError := HttpGet("http://127.0.0.1:8080/")
+	actual, getError := HttpGet("http://127.0.0.1:8081/", nil)
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -230,11 +230,11 @@ func TestServerOnError(test *testing.T) {
 
 func TestStatus(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8081)
+	ServerWithPort(server, 8082)
 	expected := 201
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
-		Status(response, expected)
-		Echo(response, "Ok")
+		SendStatus(response, expected)
+		SendEcho(response, "Ok")
 	})
 	ServerOnError(server, func(err error) {
 		test.Fatal(err)
@@ -244,7 +244,7 @@ func TestStatus(test *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	response, getError := http.Get("http://127.0.0.1:8081/")
+	response, getError := http.Get("http://127.0.0.1:8082/")
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -259,11 +259,11 @@ func TestStatus(test *testing.T) {
 
 func TestHeader(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8082)
+	ServerWithPort(server, 8083)
 	expected := "application/json"
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
-		Header(response, "Content-Type", expected)
-		Echo(response, "{}")
+		SendHeader(response, "Content-Type", expected)
+		SendEcho(response, "{}")
 	})
 	ServerOnError(server, func(err error) {
 		test.Fatal(err)
@@ -273,7 +273,7 @@ func TestHeader(test *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	response, getError := http.Get("http://127.0.0.1:8082/")
+	response, getError := http.Get("http://127.0.0.1:8083/")
 	if getError != nil {
 		test.Fatal(getError)
 	}
