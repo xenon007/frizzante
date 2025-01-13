@@ -48,17 +48,17 @@ www-build-client: www/package.json
 	cd www && \
 	bunx vite build --outDir dist/client --emptyOutDir
 
-www-watch: www-prepare www/package.json
-	make www-watch-server & make www-watch-client & wait
-
-www-watch-server: www/package.json
-	cd www && \
-	bunx vite build --watch --ssr .frizzante/vite-project/render.server.js --outDir dist/server --emptyOutDir && \
-	./node_modules/.bin/esbuild dist/server/render.server.js --bundle --outfile=dist/server/render.server.js --format=esm --allow-overwrite
-
-www-watch-client: www/package.json
-	cd www && \
-	bunx vite build --watch --outDir dist/client --emptyOutDir
+#www-watch: www-prepare www/package.json
+#	make www-watch-server & make www-watch-client & wait
+#
+#www-watch-server: www/package.json
+#	cd www && \
+#	bunx vite build --watch --ssr .frizzante/vite-project/render.server.js --outDir dist/server --emptyOutDir && \
+#	./node_modules/.bin/esbuild dist/server/render.server.js --bundle --outfile=dist/server/render.server.js --format=esm --allow-overwrite
+#
+#www-watch-client: www/package.json
+#	cd www && \
+#	bunx vite build --watch --outDir dist/client --emptyOutDir
 
 test: clean update www-build go.mod
 	go test
