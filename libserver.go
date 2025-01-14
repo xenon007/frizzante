@@ -395,7 +395,7 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 				options.Props["query"] = request.HttpRequest.URL.Query()
 				options.Props["form"] = request.HttpRequest.Form
 
-				EchoSveltePage(response, options)
+				SendSveltePage(response, options)
 			})
 		})
 	})

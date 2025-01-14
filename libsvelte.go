@@ -250,8 +250,8 @@ type SveltePageConfiguration struct {
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 
-// EchoSveltePage renders and echos a svelte page.
-func EchoSveltePage(response *Response, configuration *SveltePageConfiguration) {
+// SendSveltePage renders and echos a svelte page.
+func SendSveltePage(response *Response, configuration *SveltePageConfiguration) {
 	if nil == configuration {
 		configuration = &SveltePageConfiguration{
 			Render:  ModeFull,
