@@ -243,7 +243,12 @@ func ServerTemporaryDirectoryClear(self *Server) {
 	}
 }
 
-// ReceiveJson reads the contents of the request as json  and stores the result into value.
+// ReceiveParameter reads a path parameter from the request and returns the value.
+func ReceiveParameter(request *Request, name string) string {
+	return request.HttpRequest.PathValue(name)
+}
+
+// ReceiveJson reads the contents of the request as json and stores the result into value.
 func ReceiveJson[T any](request *Request, value *T) {
 	bytes, readAllError := io.ReadAll(request.HttpRequest.Body)
 	if readAllError != nil {
