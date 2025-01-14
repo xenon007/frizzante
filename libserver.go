@@ -363,7 +363,9 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 		EmbeddedFileOrElse(request, response, func() {
 			FileOrElse(request, response, func() {
 				configuration := &SveltePageConfiguration{
-					Render: ModeFull,
+					Render:  ModeFull,
+					Props:   map[string]interface{}{},
+					Globals: map[string]v8go.FunctionCallback{},
 				}
 
 				configure(request, configuration)
