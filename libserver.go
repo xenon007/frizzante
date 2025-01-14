@@ -353,7 +353,7 @@ func ServerStop(self *Server) {
 var sveltePagesToPaths = map[string]string{}
 
 // ServerWithSveltePage creates a request handler that serves a svelte page.
-func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request, *Response) *SveltePageConfiguration) {
+func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request, *SveltePageConfiguration)) {
 	patternParts := strings.Split(pattern, " ")
 	if len(patternParts) > 1 {
 		sveltePagesToPaths[pageId] = patternParts[1]
@@ -362,20 +362,18 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
 		EmbeddedFileOrElse(request, response, func() {
 			FileOrElse(request, response, func() {
-				options := configure(request, response)
-
-				if nil == options {
-					options = &SveltePageConfiguration{
-						Render: ModeFull,
-					}
+				configuration := &SveltePageConfiguration{
+					Render: ModeFull,
 				}
 
-				if nil == options.Globals {
-					options.Globals = map[string]v8go.FunctionCallback{}
+				configure(request, configuration)
+
+				if nil == configuration.Globals {
+					configuration.Globals = map[string]v8go.FunctionCallback{}
 				}
 
-				if nil == options.Props {
-					options.Props = map[string]interface{}{}
+				if nil == configuration.Props {
+					configuration.Props = map[string]interface{}{}
 				}
 
 				parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
@@ -390,17 +388,17 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 					}
 				}
 
-				options.Globals["query"] = func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+				configuration.Globals["query"] = func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 
 					return nil
 				}
 
-				options.Props["pagesToPaths"] = sveltePagesToPaths
-				options.Props["pageId"] = pageId
-				options.Props["query"] = request.HttpRequest.URL.Query()
-				options.Props["form"] = request.HttpRequest.Form
+				configuration.Props["pagesToPaths"] = sveltePagesToPaths
+				configuration.Props["pageId"] = pageId
+				configuration.Props["query"] = request.HttpRequest.URL.Query()
+				configuration.Props["form"] = request.HttpRequest.Form
 
-				SendSveltePage(response, options)
+				SendSveltePage(response, configuration)
 			})
 		})
 	})
