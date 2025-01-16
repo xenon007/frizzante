@@ -353,7 +353,7 @@ func ServerStop(self *Server) {
 var sveltePagesToPaths = map[string]string{}
 
 // ServerWithSveltePage creates a request handler that serves a svelte page.
-func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request, *SveltePageConfiguration)) {
+func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request) *SveltePageConfiguration) {
 	patternParts := strings.Split(pattern, " ")
 	if len(patternParts) > 1 {
 		sveltePagesToPaths[pageId] = patternParts[1]
@@ -362,13 +362,7 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
 		EmbeddedFileOrElse(request, response, func() {
 			FileOrElse(request, response, func() {
-				configuration := &SveltePageConfiguration{
-					Render:  ModeFull,
-					Props:   map[string]interface{}{},
-					Globals: map[string]v8go.FunctionCallback{},
-				}
-
-				configure(request, configuration)
+				configuration := configure(request)
 
 				if nil == configuration.Globals {
 					configuration.Globals = map[string]v8go.FunctionCallback{}
