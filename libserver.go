@@ -1,6 +1,7 @@
 package frizzante
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -575,34 +576,7 @@ func VerifyContentType(self *Request, contentTypes ...string) bool {
 	return false
 }
 
-func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
-	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
-	fileName = strings.Split(fileName, "?")[0]
-	fileName = strings.Split(fileName, "&")[0]
-
-	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) ||
-		EmbeddedIsDirectory(request.server.embeddedFileSystem, fileName) {
-		orElse()
-		return
-	}
-
-	file, readError := request.server.embeddedFileSystem.ReadFile(fileName)
-	if readError != nil {
-		ServerNotifyError(request.server, readError)
-		return
-	}
-
-	mime := Mime(fileName)
-
-	length := fmt.Sprintf("%d", len(file))
-
-	SendHeader(response, "content-type", mime)
-	SendHeader(response, "content-length", length)
-
-	SendContent(response, file)
-}
-
-func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()) {
+func EmbeddedFileOrIndexOrElse(request *Request, response *Response, orElse func()) {
 	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) {
@@ -618,23 +592,40 @@ func EmbeddedFileOrIndexElse(request *Request, response *Response, orElse func()
 		}
 	}
 
-	file, readError := os.ReadFile(fileName)
-	if readError != nil {
-		ServerNotifyError(request.server, readError)
+	reader, info, readerError := createReaderFromEmbeddedFileName(&request.server.embeddedFileSystem, fileName)
+	if readerError != nil {
+		ServerNotifyError(response.server, readerError)
 		return
 	}
 
-	mime := Mime(fileName)
-
-	length := fmt.Sprintf("%d", len(file))
-
-	SendHeader(response, "content-type", mime)
-	SendHeader(response, "content-length", length)
-
-	SendContent(response, file)
+	SendHeader(response, "Content-Type", Mime(fileName))
+	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
-func FileOrIndexElse(request *Request, response *Response, orElse func()) {
+func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
+	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
+	fileName = strings.Split(fileName, "?")[0]
+	fileName = strings.Split(fileName, "&")[0]
+
+	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) ||
+		EmbeddedIsDirectory(request.server.embeddedFileSystem, fileName) {
+		orElse()
+		return
+	}
+
+	reader, info, readerError := createReaderFromEmbeddedFileName(&request.server.embeddedFileSystem, fileName)
+	if readerError != nil {
+		ServerNotifyError(response.server, readerError)
+		return
+	}
+
+	SendHeader(response, "Content-Type", Mime(fileName))
+	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+}
+
+func FileOrIndexOrElse(request *Request, response *Response, orElse func()) {
 	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) {
@@ -650,20 +641,15 @@ func FileOrIndexElse(request *Request, response *Response, orElse func()) {
 		}
 	}
 
-	file, readError := os.ReadFile(fileName)
-	if readError != nil {
-		ServerNotifyError(request.server, readError)
+	reader, info, readerError := createReaderFromFileName(fileName)
+	if readerError != nil {
+		ServerNotifyError(response.server, readerError)
 		return
 	}
 
-	mime := Mime(fileName)
-
-	length := fmt.Sprintf("%d", len(file))
-
-	SendHeader(response, "content-type", mime)
-	SendHeader(response, "content-length", length)
-
-	SendContent(response, file)
+	SendHeader(response, "Content-Type", Mime(fileName))
+	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
 func FileOrElse(request *Request, response *Response, orElse func()) {
@@ -674,18 +660,49 @@ func FileOrElse(request *Request, response *Response, orElse func()) {
 		return
 	}
 
-	file, readError := os.ReadFile(fileName)
-	if readError != nil {
-		ServerNotifyError(request.server, readError)
+	reader, info, readerError := createReaderFromFileName(fileName)
+	if readerError != nil {
+		ServerNotifyError(response.server, readerError)
 		return
 	}
 
-	mime := Mime(fileName)
+	SendHeader(response, "Content-Type", Mime(fileName))
+	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+}
 
-	length := fmt.Sprintf("%d", len(file))
+func createReaderFromEmbeddedFileName(efs *embed.FS, fileName string) (*bytes.Reader, *os.FileInfo, error) {
+	file, openError := efs.Open(fileName)
+	if openError != nil {
+		return nil, nil, openError
+	}
 
-	SendHeader(response, "content-type", mime)
-	SendHeader(response, "content-length", length)
+	defer file.Close()
+	fileInfo, _ := file.Stat()
 
-	SendContent(response, file)
+	buffer := make([]byte, fileInfo.Size())
+	_, readError := file.Read(buffer)
+	if readError != nil {
+		return nil, nil, readError
+	}
+
+	return bytes.NewReader(buffer), &fileInfo, nil
+}
+
+func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, error) {
+	file, openError := os.Open(fileName)
+	if openError != nil {
+		return nil, nil, openError
+	}
+
+	defer file.Close()
+	fileInfo, _ := file.Stat()
+
+	buffer := make([]byte, fileInfo.Size())
+	_, readError := file.Read(buffer)
+	if readError != nil {
+		return nil, nil, readError
+	}
+
+	return bytes.NewReader(buffer), &fileInfo, nil
 }
