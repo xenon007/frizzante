@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"rogchap.com/v8go"
 	"strings"
 	"sync"
@@ -262,11 +263,6 @@ func ServerTemporaryDirectoryClear(self *Server) {
 	}
 }
 
-// ReceiveParameter reads a path parameter and returns the value.
-func ReceiveParameter(self *Request, name string) string {
-	return self.HttpRequest.PathValue(name)
-}
-
 // ReceiveMessage reads the contents of the message and returns the value.
 func ReceiveMessage(self *Request) string {
 	if self.webSocket != nil {
@@ -333,6 +329,11 @@ func ReceiveForm(self *Request) *url.Values {
 // ReceiveQuery reads a query field and returns the value.
 func ReceiveQuery(self *Request, name string) string {
 	return self.HttpRequest.URL.Query().Get(name)
+}
+
+// ReceivePath reads a path fields and returns the value.
+func ReceivePath(self *Request, name string) string {
+	return self.HttpRequest.PathValue(name)
 }
 
 // ReceiveHeader reads a header field and returns the value.
@@ -402,7 +403,7 @@ func ServerStop(self *Server) {
 	}
 }
 
-var sveltePagesToPaths = map[string]string{}
+var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
 // ServerWithSveltePage creates a request handler that serves a svelte page.
 func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request) *SveltePageConfiguration) {
@@ -420,8 +421,8 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 					configuration.Globals = map[string]v8go.FunctionCallback{}
 				}
 
-				if nil == configuration.Props {
-					configuration.Props = map[string]interface{}{}
+				if nil == configuration.Data {
+					configuration.Data = map[string]interface{}{}
 				}
 
 				parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
@@ -436,17 +437,17 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 					}
 				}
 
-				configuration.Globals["query"] = func(info *v8go.FunctionCallbackInfo) *v8go.Value {
-
-					return nil
+				path := map[string]string{}
+				for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
+					if len(name) < 1 {
+						continue
+					}
+					path[name[1]] = request.HttpRequest.PathValue(name[1])
 				}
-
-				configuration.Props["pagesToPaths"] = sveltePagesToPaths
-				configuration.Props["pageId"] = pageId
-				configuration.Props["query"] = request.HttpRequest.URL.Query()
-				configuration.Props["form"] = request.HttpRequest.Form
-
-				SendSveltePage(response, configuration)
+				configuration.Data["path"] = path
+				configuration.Data["query"] = request.HttpRequest.URL.Query()
+				configuration.Data["form"] = request.HttpRequest.Form
+				SendSveltePage(response, pageId, configuration)
 			})
 		})
 	})

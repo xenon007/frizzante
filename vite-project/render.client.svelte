@@ -1,7 +1,7 @@
 <script>
     import Async from './async.svelte'
     import {setContext} from "svelte";
-    let {pageId, pagesToPaths, ...data} = $props()
+    let {pageId, paths: paths, data} = $props()
     let reactivePageId = $state(pageId)
     let reactiveData = $state({...data})
     setContext("data", reactiveData)
@@ -13,10 +13,10 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     }
     function page(pageId){
-        if (!pagesToPaths[pageId]) {
+        if (!paths[pageId]) {
             return
         }
-        let path = pagesToPaths[pageId]
+        let path = paths[pageId]
         const resolved = {}
         for(let key in data) {
             resolved[key] = false

@@ -125,7 +125,7 @@ func SveltePrepareEnd() {
 		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(id), fileName))
 	}
 	builder.WriteString("    import {setContext} from 'svelte'\n")
-	builder.WriteString("    let {pageId, pagesToPaths, ...data} = $props()\n")
+	builder.WriteString("    let {pageId, paths, data} = $props()\n")
 	builder.WriteString("    let reactiveData = $state({...data})\n")
 	builder.WriteString("    setContext(\"data\", reactiveData)\n")
 	builder.WriteString("    setContext(\"page\", page)\n")
@@ -244,18 +244,30 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 
 type SveltePageConfiguration struct {
 	Render  RenderMode
-	Props   map[string]interface{}
+	Data    map[string]interface{}
 	Globals map[string]v8go.FunctionCallback
+}
+
+var sveltePagesToPaths = map[string]string{}
+
+type svelteRouterProps struct {
+	PageId string                 `json:"pageId"`
+	Data   map[string]interface{} `json:"data"`
+	Paths  map[string]string      `json:"paths"`
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 
 // SendSveltePage renders and echos a svelte page.
-func SendSveltePage(response *Response, configuration *SveltePageConfiguration) {
+func SendSveltePage(
+	response *Response,
+	pageId string,
+	configuration *SveltePageConfiguration,
+) {
 	if nil == configuration {
 		configuration = &SveltePageConfiguration{
 			Render:  ModeFull,
-			Props:   map[string]interface{}{},
+			Data:    map[string]interface{}{},
 			Globals: map[string]v8go.FunctionCallback{},
 		}
 	}
@@ -280,16 +292,20 @@ func SendSveltePage(response *Response, configuration *SveltePageConfiguration) 
 		indexBytes = indexBytesLocal
 	}
 
-	bytesProps, jsonError := json.Marshal(configuration.Props)
+	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
+		PageId: pageId,
+		Data:   configuration.Data,
+		Paths:  sveltePagesToPaths,
+	})
 	if jsonError != nil {
 		ServerNotifyError(response.server, jsonError)
 		return
 	}
-	stringProps := string(bytesProps)
+	routerPropsString := string(routerPropsBytes)
 
 	var index string
 	if ModeFull == configuration.Render {
-		head, body, renderError := render(response, stringProps, configuration.Globals)
+		head, body, renderError := render(response, routerPropsString, configuration.Globals)
 		if renderError != nil {
 			ServerNotifyError(response.server, renderError)
 			return
@@ -313,8 +329,8 @@ func SendSveltePage(response *Response, configuration *SveltePageConfiguration) 
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				`<script type="application/javascript">function data(){return %s}</script>`,
-				stringProps,
+				`<script type="application/javascript">function props(){return %s}</script>`,
+				routerPropsString,
 			),
 			1,
 		)
@@ -338,13 +354,13 @@ func SendSveltePage(response *Response, configuration *SveltePageConfiguration) 
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				`<script type="application/javascript">function data(){return %s}</script>`,
-				stringProps,
+				`<script type="application/javascript">function props(){return %s}</script>`,
+				routerPropsString,
 			),
 			1,
 		)
 	} else if ModeServer == configuration.Render {
-		head, body, renderError := render(response, stringProps, configuration.Globals)
+		head, body, renderError := render(response, routerPropsString, configuration.Globals)
 		if renderError != nil {
 			ServerNotifyError(response.server, renderError)
 			return
