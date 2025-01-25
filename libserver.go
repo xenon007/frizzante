@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io"
 	"log"
 	"net"
@@ -39,6 +40,7 @@ type Server struct {
 	errorHandler           []func(error)
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
+	webSocketUpgrader      *websocket.Upgrader
 }
 
 // ServerCreate creates a server.
@@ -60,10 +62,26 @@ func ServerCreate() *Server {
 		informationHandler: []func(string){},
 		errorHandler:       []func(error){},
 		temporaryDirectory: ".temp",
+		webSocketUpgrader: &websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		},
 	}
 }
 
-// ServerWithMultipartFormMaxMemory set the maximum memory for multipart forms before they fall back to disk.
+// ServerWithWebSocketReadBufferSize sets the maximum buffer size for each incoming web socket message.
+// This will not limit the size of said messages.
+func ServerWithWebSocketReadBufferSize(self *Server, readBufferSize int) {
+	self.webSocketUpgrader.ReadBufferSize = readBufferSize
+}
+
+// ServerWithWebSocketWriteBufferSize sets the maximum buffer size for each outgoing web socket message.
+// This will not limit the size of said messages.
+func ServerWithWebSocketWriteBufferSize(self *Server, writeBufferSize int) {
+	self.webSocketUpgrader.WriteBufferSize = writeBufferSize
+}
+
+// ServerWithMultipartFormMaxMemory sets the maximum memory for multipart forms before they fall back to disk.
 func ServerWithMultipartFormMaxMemory(self *Server, multipartFormMaxMemory int64) {
 	self.multipartFormMaxMemory = multipartFormMaxMemory
 }
@@ -244,54 +262,87 @@ func ServerTemporaryDirectoryClear(self *Server) {
 	}
 }
 
-// ReceiveParameter reads a path parameter from the request and returns the value.
-func ReceiveParameter(request *Request, name string) string {
-	return request.HttpRequest.PathValue(name)
+// ReceiveParameter reads a path parameter and returns the value.
+func ReceiveParameter(self *Request, name string) string {
+	return self.HttpRequest.PathValue(name)
 }
 
-// ReceiveJson reads the contents of the request as json and stores the result into value.
-func ReceiveJson[T any](request *Request, value *T) {
-	bytes, readAllError := io.ReadAll(request.HttpRequest.Body)
+// ReceiveMessage reads the contents of the message and returns the value.
+func ReceiveMessage(self *Request) string {
+	if self.webSocket != nil {
+		_, readBytes, readError := self.webSocket.ReadMessage()
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return ""
+		}
+		return string(readBytes)
+	}
+
+	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
 	if readAllError != nil {
-		ServerNotifyError(request.server, readAllError)
+		ServerNotifyError(self.server, readAllError)
+		return ""
+	}
+	return string(readBytes)
+}
+
+// ReceiveJson reads the message as json and stores the result into value.
+func ReceiveJson[T any](self *Request, value *T) {
+	if self.webSocket != nil {
+		jsonError := self.webSocket.ReadJSON(value)
+		if jsonError != nil {
+			ServerNotifyError(self.server, jsonError)
+			return
+		}
 		return
 	}
-	unmarshalError := json.Unmarshal(bytes, &value)
+
+	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
+	if readAllError != nil {
+		ServerNotifyError(self.server, readAllError)
+		return
+	}
+	unmarshalError := json.Unmarshal(readBytes, &value)
 	if unmarshalError != nil {
-		ServerNotifyError(request.server, unmarshalError)
+		ServerNotifyError(self.server, unmarshalError)
 	}
 }
 
-// ReceiveForm reads the content of the request as a form and returns the value.
-func ReceiveForm(request *Request) *url.Values {
-	parseMultipartFormError := request.HttpRequest.ParseMultipartForm(request.server.multipartFormMaxMemory)
+// ReceiveForm reads the message as a form and returns the value.
+func ReceiveForm(self *Request) *url.Values {
+	if self.webSocket != nil {
+		ServerNotifyError(self.server, errors.New("web socket connections cannot receive form payloads"))
+		return nil
+	}
+
+	parseMultipartFormError := self.HttpRequest.ParseMultipartForm(self.server.multipartFormMaxMemory)
 	if parseMultipartFormError != nil {
 		if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
-			ServerNotifyError(request.server, parseMultipartFormError)
+			ServerNotifyError(self.server, parseMultipartFormError)
 		}
 
-		parseFormError := request.HttpRequest.ParseForm()
+		parseFormError := self.HttpRequest.ParseForm()
 		if parseFormError != nil {
-			ServerNotifyError(request.server, parseFormError)
+			ServerNotifyError(self.server, parseFormError)
 		}
 	}
 
-	return &request.HttpRequest.Form
+	return &self.HttpRequest.Form
 }
 
-// ReceiveQuery reads a query field from the request and returns the value.
-func ReceiveQuery(request *Request, name string) string {
-	return request.HttpRequest.URL.Query().Get(name)
+// ReceiveQuery reads a query field and returns the value.
+func ReceiveQuery(self *Request, name string) string {
+	return self.HttpRequest.URL.Query().Get(name)
 }
 
-// ReceiveHeader reads a header field from the request and returns the value.
-func ReceiveHeader(request *Request, key string) string {
-	return request.HttpRequest.Header.Get(key)
+// ReceiveHeader reads a header field and returns the value.
+func ReceiveHeader(self *Request, key string) string {
+	return self.HttpRequest.Header.Get(key)
 }
 
-// ReceiveContentType reads the Content-Type header field from the request and returns the value.
-func ReceiveContentType(request *Request) string {
-	return request.HttpRequest.Header.Get("Content-Type")
+// ReceiveContentType reads the Content-Type header field and returns the value.
+func ReceiveContentType(self *Request) string {
+	return self.HttpRequest.Header.Get("Content-Type")
 }
 
 // ServerStart starts the server.
@@ -361,8 +412,8 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 	}
 
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
-		EmbeddedFileOrElse(request, response, func() {
-			FileOrElse(request, response, func() {
+		SendEmbeddedFileOrElse(response, request, func() {
+			SendFileOrElse(response, request, func() {
 				configuration := configure(request)
 
 				if nil == configuration.Globals {
@@ -401,7 +452,22 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 	})
 }
 
-// ServerWithRequestHandler registers a handler function for the given pattern.
+// ServerWithWebSocketHandler upgrades all incoming requests to the given pattern
+// to web sockets and invokes the callback before closing the connection.
+//
+// If the given pattern conflicts with one that is already registered,
+// or it uses a verb other than GET, ServerWithWebSocketHandler panics.
+func ServerWithWebSocketHandler(self *Server, pattern string, callback func(request *Request, response *Response)) {
+	if !strings.HasPrefix(pattern, "GET ") {
+		panic(fmt.Errorf("all web socket patterns must be defined using the GET http verb, received `%s` instead", pattern))
+		return
+	}
+	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
+		SendWebSocketUpgrade(response, request, callback)
+	})
+}
+
+// ServerWithRequestHandler registers a callback for the given pattern.
 //
 // If the given pattern conflicts with one that is already registered, ServerWithRequestHandler panics.
 func ServerWithRequestHandler(
@@ -431,6 +497,7 @@ func ServerWithRequestHandler(
 type Request struct {
 	server      *Server
 	HttpRequest *http.Request
+	webSocket   *websocket.Conn
 }
 
 type Response struct {
@@ -439,6 +506,7 @@ type Response struct {
 	lockedStatusAndHeader bool
 	statusCode            int
 	header                *http.Header
+	webSocket             *websocket.Conn
 }
 
 // ServerOnInformation handles server information.
@@ -537,14 +605,20 @@ func SendHeader(self *Response, key string, value string) {
 //
 // You can retrieve this error using ServerOnError.
 func SendContent(self *Response, content []byte) {
-	writer := *self.writer
-
 	if !self.lockedStatusAndHeader {
-		writer.WriteHeader(self.statusCode)
+		(*self.writer).WriteHeader(self.statusCode)
 		self.lockedStatusAndHeader = true
 	}
 
-	_, err := writer.Write(content)
+	if self.webSocket != nil {
+		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
+		if writeError != nil {
+			ServerNotifyError(self.server, writeError)
+		}
+		return
+	}
+
+	_, err := (*self.writer).Write(content)
 	if err != nil {
 		ServerNotifyError(self.server, err)
 		return
@@ -576,7 +650,7 @@ func VerifyContentType(self *Request, contentTypes ...string) bool {
 	return false
 }
 
-func EmbeddedFileOrIndexOrElse(request *Request, response *Response, orElse func()) {
+func SendEmbeddedFileOrIndexOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) {
@@ -603,7 +677,7 @@ func EmbeddedFileOrIndexOrElse(request *Request, response *Response, orElse func
 	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
-func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
+func SendEmbeddedFileOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 	fileName = strings.Split(fileName, "?")[0]
 	fileName = strings.Split(fileName, "&")[0]
@@ -625,7 +699,7 @@ func EmbeddedFileOrElse(request *Request, response *Response, orElse func()) {
 	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
-func FileOrIndexOrElse(request *Request, response *Response, orElse func()) {
+func SendFileOrIndexOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) {
@@ -652,7 +726,7 @@ func FileOrIndexOrElse(request *Request, response *Response, orElse func()) {
 	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
-func FileOrElse(request *Request, response *Response, orElse func()) {
+func SendFileOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join("www", "dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) || IsDirectory(fileName) {
@@ -705,4 +779,17 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 	}
 
 	return bytes.NewReader(buffer), &fileInfo, nil
+}
+
+func SendWebSocketUpgrade(self *Response, request *Request, callback func(request *Request, response *Response)) {
+	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
+	if upgradeError != nil {
+		ServerNotifyError(request.server, upgradeError)
+		return
+	}
+	defer conn.Close()
+	self.webSocket = conn
+	request.webSocket = conn
+	self.lockedStatusAndHeader = true
+	callback(request, self)
 }

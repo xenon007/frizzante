@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/evanw/esbuild v0.24.2
+	github.com/gorilla/websocket v1.5.3
 	rogchap.com/v8go v0.9.0
 )
 
