@@ -30,10 +30,10 @@ func PrepareSveltePages(directoryName string) {
 				strings.ReplaceAll(
 					strings.TrimSuffix(fileName, ".svelte"),
 					"/",
-					".",
+					"::",
 				),
 				`\`,
-				".",
+				"::",
 			)
 
 			PrepareSveltePage(id, filepath.Join(directoryName, fileName))
