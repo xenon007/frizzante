@@ -407,6 +407,9 @@ var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
 // ServerWithSveltePage creates a request handler that serves a svelte page.
 func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request) *SveltePageConfiguration) {
+	if strings.HasSuffix(pageId, ".svelte") {
+		pageId = strings.TrimSuffix(pageId, ".svelte")
+	}
 	patternParts := strings.Split(pattern, " ")
 	if len(patternParts) > 1 {
 		sveltePagesToPaths[pageId] = patternParts[1]

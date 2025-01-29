@@ -26,7 +26,7 @@ func PrepareSveltePages(directoryName string) {
 			}
 
 			fileName := info.Name()
-			id := strings.ReplaceAll(
+			pageId := strings.ReplaceAll(
 				strings.ReplaceAll(
 					strings.TrimSuffix(fileName, ".svelte"),
 					"/",
@@ -36,7 +36,7 @@ func PrepareSveltePages(directoryName string) {
 				"::",
 			)
 
-			PrepareSveltePage(id, filepath.Join(directoryName, fileName))
+			PrepareSveltePage(pageId, filepath.Join(directoryName, fileName))
 
 			return nil
 		},
@@ -49,15 +49,12 @@ func PrepareSveltePages(directoryName string) {
 }
 
 // PrepareSveltePage prepares a svelte page.
-func PrepareSveltePage(id string, fileName string) {
-	if strings.HasSuffix(id, ".svelte") {
-		id = strings.TrimSuffix(id, ".svelte")
-	}
+func PrepareSveltePage(pageId string, fileName string) {
 	relativeFileName, err := filepath.Rel("www/.frizzante/vite-project", fileName)
 	if err != nil {
 		panic(err)
 	}
-	sveltePagesToFileNames[id] = fmt.Sprintf("./%s", relativeFileName)
+	sveltePagesToFileNames[pageId] = fmt.Sprintf("./%s", relativeFileName)
 }
 
 // PrepareStart begins preparation.
