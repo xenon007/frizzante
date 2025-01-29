@@ -50,6 +50,9 @@ func PrepareSveltePages(directoryName string) {
 
 // PrepareSveltePage prepares a svelte page.
 func PrepareSveltePage(id string, fileName string) {
+	if strings.HasSuffix(id, ".svelte") {
+		id = strings.TrimSuffix(id, ".svelte")
+	}
 	relativeFileName, err := filepath.Rel("www/.frizzante/vite-project", fileName)
 	if err != nil {
 		panic(err)
