@@ -13,6 +13,41 @@ var svelteRenderToolsFileSystem embed.FS
 
 var sveltePagesToFileNames = map[string]string{}
 
+// PrepareSveltePages prepares a directory of svelte page.
+func PrepareSveltePages(directoryName string) {
+	err := filepath.Walk(directoryName,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if info.IsDir() || !strings.HasSuffix(info.Name(), ".svelte") {
+				return nil
+			}
+
+			fileName := info.Name()
+			id := strings.ReplaceAll(
+				strings.ReplaceAll(
+					strings.TrimSuffix(fileName, ".svelte"),
+					"/",
+					".",
+				),
+				`\`,
+				".",
+			)
+
+			PrepareSveltePage(id, filepath.Join(directoryName, fileName))
+
+			return nil
+		},
+	)
+	if err != nil {
+
+		panic(err)
+
+	}
+}
+
 // PrepareSveltePage prepares a svelte page.
 func PrepareSveltePage(id string, fileName string) {
 	relativeFileName, err := filepath.Rel("www/.frizzante/vite-project", fileName)
