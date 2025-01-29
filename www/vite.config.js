@@ -12,10 +12,12 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      $lib: './lib',
+      $lib: "./lib",
+      $pages: "./pages",
     },
   },
   build: {
+    sourcemap: "inline",
     rollupOptions: {
       input: {
         index: "./.frizzante/vite-project/index.html",
