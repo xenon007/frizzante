@@ -7,6 +7,7 @@ clean:
 	rm cert.pem -f
 	rm key.pem -f
 	rm bin/app -f
+	rm generated -fr
 	rm tmp -fr
 	rm www/dist -fr
 	mkdir www/dist/server -p
@@ -15,28 +16,28 @@ clean:
 	touch www/dist/server/.gitkeep
 	touch www/dist/client/.gitkeep
 
-build: www-build main.go  go.mod
-	CGO_ENABLED=1 go build -o bin/app .
+#build: www-build main.go  go.mod
+#	CGO_ENABLED=1 go build -o bin/app .
+#
+#start: www-build main.go  go.mod
+#	CGO_ENABLED=1 go run main.go
+#
+#dev: air main.go go.mod
+#	DEV=1 CGO_ENABLED=1 ./bin/air \
+#	--build.cmd "go run github.com/razshare/frizzante/generate && go build -o bin/app ." \
+#	--build.bin "bin/app" \
+#	--build.exclude_dir "out,tmp,bin,www/.frizzante,www/dist,www/node_modules,www/tmp" \
+#	--build.exclude_regex "_text.go" \
+#	--build.include_ext "go,svelte,js,json" \
+#	--build.log "go-build-errors.log" & make www-watch & wait
+#
+#air:
+#	which bin/air || curl -sSfL https://raw.githubusercontent.com/air-verse/air/master/install.sh | sh -s
 
-start: www-build main.go  go.mod
-	CGO_ENABLED=1 go run main.go
+configure:
+	go run prepare/main.go
 
-dev: air main.go go.mod
-	DEV=1 CGO_ENABLED=1 ./bin/air \
-	--build.cmd "go run github.com/razshare/frizzante/prepare && go build -o bin/app ." \
-	--build.bin "bin/app" \
-	--build.exclude_dir "out,tmp,bin,www/.frizzante,www/dist,www/node_modules,www/tmp" \
-	--build.exclude_regex "_text.go" \
-	--build.include_ext "go,svelte,js,json" \
-	--build.log "go-build-errors.log" & make www-watch & wait
-
-air:
-	which bin/air || curl -sSfL https://raw.githubusercontent.com/air-verse/air/master/install.sh | sh -s
-
-www-prepare:
-	go run github.com/razshare/frizzante/prepare
-
-www-build: www-prepare www/package.json
+www-build: configure www/package.json
 	make www-build-server & make www-build-client & wait
 
 www-build-server: www/package.json
@@ -48,7 +49,7 @@ www-build-client: www/package.json
 	cd www && \
 	bunx vite build --outDir dist/client --emptyOutDir
 
-www-watch: www-prepare www/package.json
+www-watch: configure www/package.json
 	make www-watch-server & make www-watch-client & wait
 
 www-watch-server: www/package.json

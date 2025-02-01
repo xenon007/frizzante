@@ -109,10 +109,10 @@ func PrepareStart() {
 
 // PrepareEnd ends preparation by generating all prepared code.
 func PrepareEnd() {
-	dumpSvelteFiles()
+	dumpSveltePages()
 }
 
-func dumpSvelteFiles() {
+func dumpSveltePages() {
 	if !Exists("www/.frizzante/vite-project") {
 		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
 		if err != nil {
@@ -128,11 +128,11 @@ func dumpSvelteFiles() {
 
 	var builder strings.Builder
 	counter := 0
-	for id, fileName := range sveltePagesToFileNames {
+	for pageId, fileName := range sveltePagesToFileNames {
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === reactivePageId}\n", id))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === reactivePageId}\n", pageId))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", id))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", pageId))
 		}
 		builder.WriteString(fmt.Sprintf("    <Async from={import('%s')} />\n", fileName))
 		counter++

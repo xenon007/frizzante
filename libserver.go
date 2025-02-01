@@ -263,6 +263,21 @@ func ServerTemporaryDirectoryClear(self *Server) {
 	}
 }
 
+// ReceiveCookie reads the contents of a cookie from the message and returns the value.
+func ReceiveCookie(self *Request, key string) string {
+	cookie, cookieError := self.HttpRequest.Cookie(key)
+	if cookieError != nil {
+		ServerNotifyError(self.server, cookieError)
+		return ""
+	}
+	value, unescapeError := url.QueryUnescape(cookie.Value)
+	if unescapeError != nil {
+		return ""
+	}
+
+	return value
+}
+
 // ReceiveMessage reads the contents of the message and returns the value.
 func ReceiveMessage(self *Request) string {
 	if self.webSocket != nil {
@@ -599,6 +614,11 @@ func SendHeader(self *Response, key string, value string) {
 	}
 
 	self.header.Set(key, value)
+}
+
+// SendCookie sends a cookies to the client.
+func SendCookie(self *Response, key string, value string) {
+	SendHeader(self, "Set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
 }
 
 // SendContent sends binary safe content.
