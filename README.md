@@ -31,11 +31,11 @@ make build
 ```
 
 > [!NOTE]
-> The `www/dist` directory is embedded, which makes the final executable completely portable.
+> The `.dist` directory is embedded, which makes the final executable completely portable.
 > 
-> That being said, you can still create a "www/dist" directory near your executable.\
+> That being said, you can still create a ".dist" directory near your executable.\
 > Whenever the server will try to access a file missing from the embedded file system, the server will fall 
-> back to the nearby "www/dist" directory instead.
+> back to the nearby ".dist" directory instead.
 
 > [!NOTE]
 > This project is aimed mainly at linux distributions.\

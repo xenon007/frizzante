@@ -21,7 +21,7 @@ const (
 )
 
 func render(response *Response, stringProps string, globals map[string]v8go.FunctionCallback) (string, string, error) {
-	renderFileName := filepath.Join("www", "dist", "server", "render.server.js")
+	renderFileName := filepath.Join(".dist", "server", "render.server.js")
 
 	var renderEsmBytes []byte
 	if "1" == os.Getenv("DEV") {
@@ -40,7 +40,7 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 
 	renderEsm := string(renderEsmBytes)
 
-	renderCjs, javaScriptBundleError := JavaScriptBundle("www", api.FormatCommonJS, renderEsm)
+	renderCjs, javaScriptBundleError := JavaScriptBundle(".", api.FormatCommonJS, renderEsm)
 	if javaScriptBundleError != nil {
 		return "", "", javaScriptBundleError
 	}
@@ -59,7 +59,7 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 		stringProps,
 	)
 
-	doneCjs, bundleError := JavaScriptBundle("www", api.FormatCommonJS, doneEsm)
+	doneCjs, bundleError := JavaScriptBundle(".", api.FormatCommonJS, doneEsm)
 	if bundleError != nil {
 		return "", "", bundleError
 	}
@@ -139,7 +139,7 @@ func SendSveltePage(
 		}
 	}
 
-	fileNameIndex := filepath.Join("www", "dist", "client", ".frizzante", "vite-project", "index.html")
+	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
 
 	var indexBytes []byte
 

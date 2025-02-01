@@ -48,7 +48,7 @@ func PrepareSveltePages(directoryName string) {
 
 // PrepareSveltePage prepares a svelte page.
 func PrepareSveltePage(pageId string, fileName string) {
-	relativeFileName, err := filepath.Rel("www/.frizzante/vite-project", fileName)
+	relativeFileName, err := filepath.Rel(".frizzante/vite-project", fileName)
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +100,7 @@ func prepareServerLoader() error {
 
 	renderServerSvelteString = strings.Replace(renderServerSvelteString, "<!--app-router-->", builder.String(), 1)
 
-	writeError := os.WriteFile("www/.frizzante/vite-project/render.server.svelte", []byte(renderServerSvelteString), os.ModePerm)
+	writeError := os.WriteFile(".frizzante/vite-project/render.server.svelte", []byte(renderServerSvelteString), os.ModePerm)
 	if writeError != nil {
 		return writeError
 	}
@@ -135,7 +135,7 @@ func prepareClientLoader() error {
 	renderClientSvelteString = strings.Replace(renderClientSvelteString, "<!--app-router-->", builder.String(), 1)
 
 	// Dump client loader.
-	writeError := os.WriteFile("www/.frizzante/vite-project/render.client.svelte", []byte(renderClientSvelteString), os.ModePerm)
+	writeError := os.WriteFile(".frizzante/vite-project/render.client.svelte", []byte(renderClientSvelteString), os.ModePerm)
 	if writeError != nil {
 		return writeError
 	}
@@ -164,29 +164,29 @@ func prepareSveltePagesStart() error {
 		return renderServerJsError
 	}
 
-	if !Exists("www/.frizzante/vite-project") {
-		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
+	if !Exists(".frizzante/vite-project") {
+		err := os.MkdirAll(".frizzante/vite-project", os.ModePerm)
 		if err != nil {
 			return err
 		}
 	}
 
-	err := os.WriteFile("www/.frizzante/vite-project/page.async.svelte", asyncSvelte, os.ModePerm)
+	err := os.WriteFile(".frizzante/vite-project/page.async.svelte", asyncSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile("www/.frizzante/vite-project/index.html", indexHtml, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/index.html", indexHtml, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile("www/.frizzante/vite-project/render.client.js", renderClientJs, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/render.client.js", renderClientJs, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile("www/.frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
 	if err != nil {
 		return err
 	}
@@ -195,8 +195,8 @@ func prepareSveltePagesStart() error {
 }
 
 func prepareSveltePagesEnd() error {
-	if !Exists("www/.frizzante/vite-project") {
-		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
+	if !Exists(".frizzante/vite-project") {
+		err := os.MkdirAll(".frizzante/vite-project", os.ModePerm)
 		if err != nil {
 			return err
 		}

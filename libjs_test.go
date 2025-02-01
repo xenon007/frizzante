@@ -97,7 +97,7 @@ func TestJavaScriptBundle(test *testing.T) {
 	})
 	`
 
-	cjs, bundleError := JavaScriptBundle("www", api.FormatCommonJS, script)
+	cjs, bundleError := JavaScriptBundle(".", api.FormatCommonJS, script)
 	if bundleError != nil {
 		test.Fatal(bundleError)
 	}
