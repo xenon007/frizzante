@@ -47,9 +47,6 @@ go.work.sum
 # env file
 .env
 
-# Idea
-.idea
-
 # Certificates
 *.pem
 *.crt
