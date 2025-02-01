@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
+	uuid "github.com/nu7hatch/gouuid"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -169,6 +170,11 @@ func SendSveltePage(
 	}
 	routerPropsString := string(routerPropsBytes)
 
+	targetId, targetIdError := uuid.NewV4()
+	if targetIdError != nil {
+		panic(targetIdError)
+	}
+
 	var index string
 	if ModeFull == configuration.Render {
 		head, body, renderError := render(response, routerPropsString, configuration.Globals)
@@ -182,11 +188,11 @@ func SendSveltePage(
 					strings.Replace(
 						string(indexBytes),
 						"<!--app-target-->",
-						`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`,
+						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
 						1,
 					),
 					"<!--app-body-->",
-					fmt.Sprintf(`<div id="app">%s</div>`, body),
+					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
 					1,
 				),
 				"<!--app-head-->",
@@ -207,11 +213,11 @@ func SendSveltePage(
 					strings.Replace(
 						string(indexBytes),
 						"<!--app-target-->",
-						`<script type="application/javascript">function target(){return document.getElementById("app")}</script>`,
+						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
 						1,
 					),
 					"<!--app-body-->",
-					`<div id="app"></div>`,
+					fmt.Sprintf(`<div id="%s"></div>`, targetId),
 					1,
 				),
 				"<!--app-head-->",
@@ -241,7 +247,7 @@ func SendSveltePage(
 						1,
 					),
 					"<!--app-body-->",
-					fmt.Sprintf(`<div id="app">%s</div>`, body),
+					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
 					1,
 				),
 				"<!--app-head-->",

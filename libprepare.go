@@ -42,9 +42,7 @@ func PrepareSveltePages(directoryName string) {
 		},
 	)
 	if err != nil {
-
 		panic(err)
-
 	}
 }
 
@@ -59,49 +57,7 @@ func PrepareSveltePage(pageId string, fileName string) {
 
 // PrepareStart begins preparation.
 func PrepareStart() {
-	asyncSvelte, asyncSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/async.svelte")
-	if asyncSvelteError != nil {
-		panic(asyncSvelteError)
-	}
-
-	indexHtml, indexHtmlError := svelteRenderToolsFileSystem.ReadFile("vite-project/index.html")
-	if indexHtmlError != nil {
-		panic(indexHtmlError)
-	}
-
-	renderClientJs, renderClientJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.js")
-	if renderClientJsError != nil {
-		panic(renderClientJsError)
-	}
-
-	renderServerJs, renderServerJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.js")
-	if renderServerJsError != nil {
-		panic(renderServerJsError)
-	}
-
-	if !Exists("www/.frizzante/vite-project") {
-		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	err := os.WriteFile("www/.frizzante/vite-project/async.svelte", asyncSvelte, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.WriteFile("www/.frizzante/vite-project/index.html", indexHtml, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.WriteFile("www/.frizzante/vite-project/render.client.js", renderClientJs, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.WriteFile("www/.frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
+	err := prepareSveltePagesStart()
 	if err != nil {
 		panic(err)
 	}
@@ -109,78 +65,26 @@ func PrepareStart() {
 
 // PrepareEnd ends preparation by generating all prepared code.
 func PrepareEnd() {
-	dumpSveltePages()
+	err := prepareSveltePagesEnd()
+	if err != nil {
+		panic(err)
+	}
 }
 
-func dumpSveltePages() {
-	if !Exists("www/.frizzante/vite-project") {
-		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	// Build client loader.
-	renderClientSvelte, readError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.svelte")
-	if readError != nil {
-		panic(readError)
-	}
-
+func prepareServerLoader() error {
 	var builder strings.Builder
-	counter := 0
-	for pageId, fileName := range sveltePagesToFileNames {
-		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === reactivePageId}\n", pageId))
-		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", pageId))
-		}
-		builder.WriteString(fmt.Sprintf("    <Async from={import('%s')} />\n", fileName))
-		counter++
+	renderServerSvelte, readError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.svelte")
+	if readError != nil {
+		return readError
 	}
-	if counter > 0 {
-		builder.WriteString("{/if}")
-	}
-	renderClientSvelteString := strings.Replace(string(renderClientSvelte), "<!--app-router-->", builder.String(), 1)
-
-	// Dump client loader.
-	marshalError := os.WriteFile("www/.frizzante/vite-project/render.client.svelte", []byte(renderClientSvelteString), os.ModePerm)
-	if marshalError != nil {
-		panic(marshalError)
-	}
-
-	// Build server loader.
-	builder.Reset()
-	builder.WriteString("<script>\n")
 	for id, fileName := range sveltePagesToFileNames {
 		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(id), fileName))
 	}
-	builder.WriteString("    import {setContext} from 'svelte'\n")
-	builder.WriteString("    let {pageId, paths, data} = $props()\n")
-	builder.WriteString("    let reactiveData = $state({...data})\n")
-	builder.WriteString("    setContext(\"data\", reactiveData)\n")
-	builder.WriteString("    setContext(\"page\", page)\n")
-	builder.WriteString("    setContext(\"path\", path)\n")
-	builder.WriteString("    function page(){}\n")
-	builder.WriteString("    function path(pageId){\n")
-	builder.WriteString("    	let path = paths[pageId]??''\n")
-	builder.WriteString("    	if (!paths[pageId]) {\n")
-	builder.WriteString("    		return \"\"\n")
-	builder.WriteString("    	}\n")
-	builder.WriteString("    	const resolved = {}\n")
-	builder.WriteString("    	for(let key in data.path) {\n")
-	builder.WriteString("    		resolved[key] = false\n")
-	builder.WriteString("    	}\n")
-	builder.WriteString("    	for(let key in data.path) {\n")
-	builder.WriteString("    		const value = data[key]\n")
-	builder.WriteString("    		const regex = escapeRegExp(`{${key}}`)\n")
-	builder.WriteString("    		let oldPath = path\n")
-	builder.WriteString("    		path = path.replaceAll(new RegExp(regex,'g'), value)\n")
-	builder.WriteString("    		resolved[key] = oldPath === path\n")
-	builder.WriteString("    	}\n")
-	builder.WriteString("    	return path\n")
-	builder.WriteString("    }\n")
-	builder.WriteString("</script>\n")
-	counter = 0
+
+	renderServerSvelteString := strings.Replace(string(renderServerSvelte), "<!--app-imports-->", builder.String(), 1)
+
+	builder.Reset()
+	counter := 0
 	for id, _ := range sveltePagesToFileNames {
 		if 0 == counter {
 			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", id))
@@ -193,11 +97,121 @@ func dumpSveltePages() {
 	if counter > 0 {
 		builder.WriteString("{/if}")
 	}
-	renderServerSvelte := builder.String()
 
-	// Dump server loader.
-	marshalError = os.WriteFile("www/.frizzante/vite-project/render.server.svelte", []byte(renderServerSvelte), os.ModePerm)
-	if marshalError != nil {
-		panic(marshalError)
+	renderServerSvelteString = strings.Replace(renderServerSvelteString, "<!--app-router-->", builder.String(), 1)
+
+	writeError := os.WriteFile("www/.frizzante/vite-project/render.server.svelte", []byte(renderServerSvelteString), os.ModePerm)
+	if writeError != nil {
+		return writeError
 	}
+	return nil
+}
+
+func prepareClientLoader() error {
+	// Build client loader.
+	renderClientSvelte, readError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.svelte")
+	if readError != nil {
+		return readError
+	}
+
+	var builder strings.Builder
+	builder.WriteString("import Page from './page.async.svelte'")
+	renderClientSvelteString := strings.Replace(string(renderClientSvelte), "<!--app-imports-->", builder.String(), 1)
+
+	builder.Reset()
+	counter := 0
+	for pageId, fileName := range sveltePagesToFileNames {
+		if 0 == counter {
+			builder.WriteString(fmt.Sprintf("{#if '%s' === reactivePageId}\n", pageId))
+		} else {
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", pageId))
+		}
+		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
+		counter++
+	}
+	if counter > 0 {
+		builder.WriteString("{/if}")
+	}
+	renderClientSvelteString = strings.Replace(renderClientSvelteString, "<!--app-router-->", builder.String(), 1)
+
+	// Dump client loader.
+	writeError := os.WriteFile("www/.frizzante/vite-project/render.client.svelte", []byte(renderClientSvelteString), os.ModePerm)
+	if writeError != nil {
+		return writeError
+	}
+
+	return nil
+}
+
+func prepareSveltePagesStart() error {
+	asyncSvelte, asyncSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/page.async.svelte")
+	if asyncSvelteError != nil {
+		return asyncSvelteError
+	}
+
+	indexHtml, indexHtmlError := svelteRenderToolsFileSystem.ReadFile("vite-project/index.html")
+	if indexHtmlError != nil {
+		return indexHtmlError
+	}
+
+	renderClientJs, renderClientJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.client.js")
+	if renderClientJsError != nil {
+		return renderClientJsError
+	}
+
+	renderServerJs, renderServerJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/render.server.js")
+	if renderServerJsError != nil {
+		return renderServerJsError
+	}
+
+	if !Exists("www/.frizzante/vite-project") {
+		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := os.WriteFile("www/.frizzante/vite-project/page.async.svelte", asyncSvelte, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("www/.frizzante/vite-project/index.html", indexHtml, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("www/.frizzante/vite-project/render.client.js", renderClientJs, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("www/.frizzante/vite-project/render.server.js", renderServerJs, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func prepareSveltePagesEnd() error {
+	if !Exists("www/.frizzante/vite-project") {
+		err := os.MkdirAll("www/.frizzante/vite-project", os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Prepare server loader.
+	dumpServerLoaderError := prepareServerLoader()
+	if dumpServerLoaderError != nil {
+		return dumpServerLoaderError
+	}
+
+	// Prepare client loader.
+	dumpClientLoaderError := prepareClientLoader()
+	if dumpClientLoaderError != nil {
+		return dumpServerLoaderError
+	}
+	return nil
 }

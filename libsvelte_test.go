@@ -60,7 +60,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	go ServerStart(server)
 	time.Sleep(1 * time.Second)
 
-	expected := "<div id=\"app\"></div>"
+	expected := "<script type=\"application/javascript\">function target(){return document.getElementById("
 	actual, getError := HttpGet("http://127.0.0.1:8085/", nil)
 	if getError != nil {
 		test.Fatal(getError)

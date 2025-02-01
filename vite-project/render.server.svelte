@@ -1,19 +1,11 @@
 <script>
     <!--app-imports-->
-    import {setContext} from "svelte";
-    let {pageId, paths: paths, data} = $props()
-    let reactivePageId = $state(pageId)
+    import {setContext} from 'svelte'
+    let {pageId, paths, data} = $props()
     let reactiveData = $state({...data})
     setContext("data", reactiveData)
-    setContext("page", page)
-    setContext("pagePath", pagePath)
-    window.addEventListener('popstate', (event) => {
-        page(event.state.pageId)
-    });
-    function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    }
-    function pagePath(pageId){
+    setContext("page", ()=>{})
+    setContext("pagePath", function(pageId){
         let path = paths[pageId]??''
         if (!paths[pageId]) {
             return ""
@@ -29,16 +21,9 @@
             path = path.replaceAll(new RegExp(regex,'g'), value)
             resolved[key] = oldPath === path
         }
-
         return path
-    }
-    function page(pageId){
-        if (!paths[pageId]) {
-            return
-        }
-        history.pushState({pageId}, '', pagePath(pageId));
-        reactivePageId = pageId
-    }
+    })
+
 </script>
 
 <!--app-router-->
