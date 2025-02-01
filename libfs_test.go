@@ -15,7 +15,7 @@ func TestEmbeddedExists(test *testing.T) {
 	fileName := "libfs.go"
 	actual := EmbeddedExists(embeddedFileSystem, fileName)
 	expected := true
-	if actual != expected {
+	if !actual {
 		test.Fatalf("%s (embedded) was expected to exist", fileName)
 	}
 
