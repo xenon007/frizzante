@@ -1,5 +1,5 @@
-import { mount } from "svelte";
+import { hydrate } from "svelte";
 import RenderClient from "./render.client.svelte";
 // @ts-ignore
 target().innerHTML = "";
-mount(RenderClient, { target: target(), props: props() });
+hydrate(RenderClient, { target: target(), props: props() });
