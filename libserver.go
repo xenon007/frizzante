@@ -421,7 +421,7 @@ func ServerStop(self *Server) {
 var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
 // ServerWithSveltePage creates a request handler that serves a svelte page.
-func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request) *SveltePageConfiguration) {
+func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Request, *Response) *SveltePageConfiguration) {
 	if strings.HasSuffix(pageId, ".svelte") {
 		pageId = strings.TrimSuffix(pageId, ".svelte")
 	}
@@ -433,7 +433,7 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
 		SendEmbeddedFileOrElse(response, request, func() {
 			SendFileOrElse(response, request, func() {
-				configuration := configure(request)
+				configuration := configure(request, response)
 
 				if nil == configuration.Globals {
 					configuration.Globals = map[string]v8go.FunctionCallback{}
