@@ -4,6 +4,6 @@ import frz "github.com/razshare/frizzante"
 
 func main() {
 	frz.PrepareStart()
-	frz.PrepareSveltePages("www/pages")
+	frz.PrepareSveltePages("pages")
 	frz.PrepareEnd()
 }
