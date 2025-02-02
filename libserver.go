@@ -545,6 +545,11 @@ func ServerWithRequestHandler(
 		if isEntry {
 			SendEmbeddedFileOrElse(&response, func() {
 				SendFileOrElse(&response, func() {
+					if "/" != request.HttpRequest.RequestURI {
+						SendStatus(&response, 404)
+						SendEcho(&response, "")
+						return
+					}
 					callback(self, &request, &response)
 				})
 			})
