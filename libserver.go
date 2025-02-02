@@ -443,6 +443,11 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 			SendFileOrElse(response, request, func() {
 				configuration := configure(server, request, response)
 
+				if nil == configuration {
+					ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil configuration", pattern))
+					return
+				}
+
 				if nil == configuration.Globals {
 					configuration.Globals = map[string]v8go.FunctionCallback{}
 				}
