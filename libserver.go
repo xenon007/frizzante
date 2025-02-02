@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"rogchap.com/v8go"
 	"strings"
@@ -854,4 +855,26 @@ func ServerSqlExecute(self *Server, query string, props ...any) func(dest ...any
 		}
 		return true
 	}
+}
+
+// ServerSqlCreateTable creates a table from a type.
+func ServerSqlCreateTable[Table any](server *Server) error {
+	var query strings.Builder
+	t := reflect.TypeFor[Table]()
+	query.WriteString(fmt.Sprintf("create table `%s`(\n", t.Name()))
+	count := t.NumField()
+	for i := 0; i < count; i++ {
+		field := t.Field(i)
+		rules := field.Tag.Get("sql")
+		if i > 0 {
+			query.WriteString(",\n")
+		}
+		query.WriteString(fmt.Sprintf("`%s` %s", field.Name, rules))
+	}
+	query.WriteString(");")
+	_, err := server.database.Exec(query.String())
+	if err != nil {
+		return err
+	}
+	return nil
 }
