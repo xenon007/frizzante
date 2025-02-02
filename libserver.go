@@ -440,7 +440,7 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 				}
 
 				if nil == configuration.Data {
-					configuration.Data = map[string]interface{}{}
+					configuration.Data = map[string]any{}
 				}
 
 				parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)

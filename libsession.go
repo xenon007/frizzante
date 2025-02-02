@@ -6,10 +6,10 @@ var sessions = map[string]*Session{}
 
 type Session struct {
 	id   string
-	data map[string]interface{}
+	data map[string]any
 }
 
-func (s *Session) get(key string, defaultValue interface{}) interface{} {
+func (s *Session) get(key string, defaultValue any) any {
 	sessionItem, ok := s.data[key]
 	if !ok {
 		s.data[key] = defaultValue
@@ -19,7 +19,7 @@ func (s *Session) get(key string, defaultValue interface{}) interface{} {
 	return sessionItem
 }
 
-func (s *Session) set(key string, defaultValue interface{}) {
+func (s *Session) set(key string, defaultValue any) {
 	s.data[key] = defaultValue
 }
 
@@ -31,7 +31,7 @@ func sessionCreate() (*Session, error) {
 
 	return &Session{
 		id:   sessionId.String(),
-		data: map[string]interface{}{},
+		data: map[string]any{},
 	}, nil
 }
 
@@ -39,8 +39,8 @@ func sessionCreate() (*Session, error) {
 //
 // SessionStart always returns two functions, a get() and a set(), which you can use to manage the session.
 func SessionStart(request *Request, response *Response) (
-	get func(key string, defaultValue interface{}) interface{},
-	set func(key string, defaultValue interface{}),
+	get func(key string, defaultValue any) any,
+	set func(key string, defaultValue any),
 ) {
 	sessionIdCookie, cookieError := request.HttpRequest.Cookie("session-id")
 	if cookieError != nil {

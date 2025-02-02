@@ -111,16 +111,16 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 
 type SveltePageConfiguration struct {
 	Render  RenderMode
-	Data    map[string]interface{}
+	Data    map[string]any
 	Globals map[string]v8go.FunctionCallback
 }
 
 var sveltePagesToPaths = map[string]string{}
 
 type svelteRouterProps struct {
-	PageId string                 `json:"pageId"`
-	Data   map[string]interface{} `json:"data"`
-	Paths  map[string]string      `json:"paths"`
+	PageId string            `json:"pageId"`
+	Data   map[string]any    `json:"data"`
+	Paths  map[string]string `json:"paths"`
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
@@ -134,7 +134,7 @@ func SendSveltePage(
 	if nil == configuration {
 		configuration = &SveltePageConfiguration{
 			Render:  ModeFull,
-			Data:    map[string]interface{}{},
+			Data:    map[string]any{},
 			Globals: map[string]v8go.FunctionCallback{},
 		}
 	}

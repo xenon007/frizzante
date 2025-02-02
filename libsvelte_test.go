@@ -18,7 +18,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendSveltePage(response, "welcome", &SveltePageConfiguration{
 			Render: ModeServer,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"name": "world",
 			},
 			Globals: map[string]v8go.FunctionCallback{},
@@ -51,7 +51,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendSveltePage(response, "welcome", &SveltePageConfiguration{
 			Render: ModeClient,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"name": "world",
 			},
 			Globals: map[string]v8go.FunctionCallback{},
