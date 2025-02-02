@@ -837,24 +837,32 @@ func SendWebSocketUpgrade(self *Response, request *Request, callback func(reques
 // ServerSqlExecute executes a sql query and returns a function that can be used to extract the results.
 //
 // The resulting function advances the row and copies the columns into the values pointed at by dest.
-func ServerSqlExecute(self *Server, query string, props ...any) func(dest ...any) bool {
+//
+// ServerSqlExecute also returns a second function, which when invoked will close
+// the internal query result preventing further enumerations.
+func ServerSqlExecute(self *Server, query string, props ...any) (func(dest ...any) bool, func()) {
 	rows, execError := self.database.Query(query, props...)
 	if execError != nil {
 		ServerNotifyError(self, execError)
-		return func(columns ...any) bool { return false }
+		return func(columns ...any) bool { return false }, func() {}
 	}
-	defer rows.Close()
 
 	return func(columns ...any) bool {
-		if !rows.Next() {
-			return false
+			if !rows.Next() {
+				return false
+			}
+			err := rows.Scan(columns...)
+			if err != nil {
+				return false
+			}
+			return true
+		},
+		func() {
+			err := rows.Close()
+			if err != nil {
+				ServerNotifyError(self, err)
+			}
 		}
-		err := rows.Scan(columns...)
-		if err != nil {
-			return false
-		}
-		return true
-	}
 }
 
 // ServerSqlCreateTable creates a table from a type.
