@@ -858,7 +858,7 @@ func ServerSqlExecute(self *Server, query string, props ...any) func(dest ...any
 }
 
 // ServerSqlCreateTable creates a table from a type.
-func ServerSqlCreateTable[Table any](server *Server) error {
+func ServerSqlCreateTable[Table any](self *Server) {
 	var query strings.Builder
 	t := reflect.TypeFor[Table]()
 	query.WriteString(fmt.Sprintf("create table `%s`(\n", t.Name()))
@@ -872,9 +872,8 @@ func ServerSqlCreateTable[Table any](server *Server) error {
 		query.WriteString(fmt.Sprintf("`%s` %s", field.Name, rules))
 	}
 	query.WriteString(");")
-	_, err := server.database.Exec(query.String())
+	_, err := self.database.Exec(query.String())
 	if err != nil {
-		return err
+		ServerNotifyError(self, err)
 	}
-	return nil
 }
