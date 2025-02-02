@@ -954,11 +954,11 @@ func ServerSqlCreateTable[Table any](self *Server) {
 	count := t.NumField()
 	for i := 0; i < count; i++ {
 		field := t.Field(i)
-		rules := field.Tag.Get("sql")
+		definition := field.Tag.Get("sql")
 		if i > 0 {
 			query.WriteString(",\n")
 		}
-		query.WriteString(fmt.Sprintf("`%s` %s", field.Name, rules))
+		query.WriteString(definition)
 	}
 	query.WriteString(");")
 	_, err := self.database.Exec(query.String())
