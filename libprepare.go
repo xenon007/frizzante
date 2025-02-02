@@ -126,7 +126,7 @@ func prepareClientLoader() error {
 		} else {
 			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", pageId))
 		}
-		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
+		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} {pageId} />\n", fileName))
 		counter++
 	}
 	if counter > 0 {

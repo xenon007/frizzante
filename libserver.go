@@ -486,6 +486,18 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 		configuration.Data["path"] = path
 		configuration.Data["query"] = request.HttpRequest.URL.Query()
 		configuration.Data["form"] = request.HttpRequest.Form
+
+		if VerifyAccept(request, "application/json") {
+			data, marshalError := json.Marshal(configuration.Data)
+			if marshalError != nil {
+				ServerNotifyError(server, marshalError)
+				return
+			}
+			SendHeader(response, "Content-Type", "application/json")
+			SendEcho(response, string(data))
+			return
+		}
+
 		SendSveltePage(response, pageId, configuration)
 	})
 }
@@ -545,11 +557,6 @@ func ServerWithRequestHandler(
 		if isEntry {
 			SendEmbeddedFileOrElse(&response, func() {
 				SendFileOrElse(&response, func() {
-					if "/" != request.HttpRequest.RequestURI {
-						SendStatus(&response, 404)
-						SendEcho(&response, "")
-						return
-					}
 					callback(self, &request, &response)
 				})
 			})
@@ -713,9 +720,21 @@ func SendEcho(self *Response, content string) {
 
 // VerifyContentType checks if the incoming request has any of the given content-types.
 func VerifyContentType(self *Request, contentTypes ...string) bool {
-	requestedMime := self.HttpRequest.Header.Get("content-type")
+	requestedMime := self.HttpRequest.Header.Get("Content-Type")
 	for _, acceptedMime := range contentTypes {
 		if acceptedMime == "*" || strings.HasPrefix(requestedMime, acceptedMime) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// VerifyContentType checks if the incoming request accepts any of the given content-types.
+func VerifyAccept(self *Request, contentTypes ...string) bool {
+	requestedAcceptMime := self.HttpRequest.Header.Get("Accept")
+	for _, acceptedMime := range contentTypes {
+		if acceptedMime == "*" || strings.Contains(requestedAcceptMime, acceptedMime) {
 			return true
 		}
 	}

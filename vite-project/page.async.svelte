@@ -2,16 +2,21 @@
     let PreviousComponent = $state(false)
 </script>
 <script>
-    let {from,...data} = $props()
-    from.then((page)=>{
+    import {getContext, setContext} from "svelte";
+
+    let {from, pageId} = $props()
+    let data = getContext("data")
+
+    const pagePath = getContext("pagePath")
+    from.then((page) => {
         PreviousComponent = page
     })
 </script>
 
 {#await from}
     {#if PreviousComponent}
-        <PreviousComponent.default {...data}/>
+        <PreviousComponent.default/>
     {/if}
 {:then Component}
-    <Component.default {...data}/>
+    <Component.default/>
 {/await}
