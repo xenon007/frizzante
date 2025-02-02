@@ -883,7 +883,7 @@ func SendWebSocketUpgrade(self *Response, callback func(request *Request, respon
 func serverSqlExecuteFetchFallback(dest ...any) bool { return false }
 func serverSqlExecuteDestroyFallback()               {}
 
-// ServerSqlExecute executes a sql transaction.
+// ServerSqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
 func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
 	transaction, transationError := self.database.Begin()
 	if transationError != nil {
@@ -910,7 +910,7 @@ func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
 	return &result
 }
 
-// ServerSqlRows executes a sql query that returns rows, tipically a SELECT.
+// ServerSqlRows executes a sql query that returns rows, typically a SELECT query.
 //
 // Use fetch to project the current row's columns onto dest.
 // Fetch will also advance to the next row and return true, otherwise it returns false.
