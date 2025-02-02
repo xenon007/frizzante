@@ -880,35 +880,70 @@ func SendWebSocketUpgrade(self *Response, callback func(request *Request, respon
 	callback(request, self)
 }
 
-// ServerSqlExecute executes a sql query and returns a function that can be used to extract the results.
-//
-// The resulting function advances the row and copies the columns into the values pointed at by dest.
-//
-// ServerSqlExecute also returns a second function, which when invoked will close
-// the internal query result preventing further enumerations.
-func ServerSqlExecute(self *Server, query string, props ...any) (func(dest ...any) bool, func()) {
-	rows, execError := self.database.Query(query, props...)
-	if execError != nil {
-		ServerNotifyError(self, execError)
-		return func(columns ...any) bool { return false }, func() {}
+func serverSqlExecuteFetchFallback(dest ...any) bool { return false }
+func serverSqlExecuteDestroyFallback()               {}
+
+// ServerSqlExecute executes a sql transaction.
+func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
+	transaction, transationError := self.database.Begin()
+	if transationError != nil {
+		ServerNotifyError(self, transationError)
+		return nil
 	}
 
-	return func(columns ...any) bool {
-			if !rows.Next() {
-				return false
-			}
-			err := rows.Scan(columns...)
-			if err != nil {
-				return false
-			}
-			return true
-		},
-		func() {
-			err := rows.Close()
-			if err != nil {
-				ServerNotifyError(self, err)
-			}
+	result, execError := transaction.Exec(query, props...)
+	if execError != nil {
+		ServerNotifyError(self, execError)
+		rollbackError := transaction.Rollback()
+		if rollbackError != nil {
+			ServerNotifyError(self, rollbackError)
 		}
+		return nil
+	}
+
+	commitError := transaction.Commit()
+	if commitError != nil {
+		ServerNotifyError(self, commitError)
+		return nil
+	}
+
+	return &result
+}
+
+// ServerSqlRows executes a sql query that returns rows, tipically a SELECT.
+//
+// Use fetch to project the current row's columns onto dest.
+// Fetch will also advance to the next row and return true, otherwise it returns false.
+//
+// Use unlock to unlock the database context.
+func ServerSqlRows(self *Server, query string, props ...any) (fetch func(dest ...any) bool, unlock func()) {
+	fetch = serverSqlExecuteFetchFallback
+	unlock = serverSqlExecuteDestroyFallback
+
+	rows, queryError := self.database.Query(query, props...)
+	if queryError != nil {
+		ServerNotifyError(self, queryError)
+		return
+	}
+
+	fetch = func(dest ...any) bool {
+		if !rows.Next() {
+			return false
+		}
+
+		err := rows.Scan(dest...)
+		if err != nil {
+			return false
+		}
+		return true
+	}
+	unlock = func() {
+		err := rows.Close()
+		if err != nil {
+			ServerNotifyError(self, err)
+		}
+	}
+	return
 }
 
 // ServerSqlCreateTable creates a table from a type.
