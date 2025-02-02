@@ -3,6 +3,7 @@ package frizzante
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,7 @@ type Server struct {
 	securePort             int
 	multipartFormMaxMemory int64
 	server                 *http.Server
+	database               *sql.DB
 	mux                    *http.ServeMux
 	sessions               map[string]*net.Conn
 	readTimeout            time.Duration
@@ -68,6 +70,11 @@ func ServerCreate() *Server {
 			WriteBufferSize: 1024,
 		},
 	}
+}
+
+// ServerWithDatabase sets the server database.
+func ServerWithDatabase(self *Server, database *sql.DB) {
+	self.database = database
 }
 
 // ServerWithWebSocketReadBufferSize sets the maximum buffer size for each incoming web socket message.
@@ -674,6 +681,8 @@ func VerifyContentType(self *Request, contentTypes ...string) bool {
 	return false
 }
 
+// SendEmbeddedFileOrIndexOrElse sends the embedded file requested by the client,
+// or the closest index.html embedded file, or else falls back.
 func SendEmbeddedFileOrIndexOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 
@@ -701,6 +710,8 @@ func SendEmbeddedFileOrIndexOrElse(response *Response, request *Request, orElse 
 	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
+// SendEmbeddedFileOrElse sends the embedded file requested by the client,
+// or the closest index.html embedded file, or else falls back.
 func SendEmbeddedFileOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 	fileName = strings.Split(fileName, "?")[0]
@@ -723,6 +734,8 @@ func SendEmbeddedFileOrElse(response *Response, request *Request, orElse func())
 	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
+// SendFileOrIndexOrElse sends the file requested by the client,
+// or the closest index.html file, or else falls back.
 func SendFileOrIndexOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 
@@ -750,6 +763,7 @@ func SendFileOrIndexOrElse(response *Response, request *Request, orElse func()) 
 	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
+// SendFileOrElse sends the file requested by the client, or else falls back.
 func SendFileOrElse(response *Response, request *Request, orElse func()) {
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 
@@ -805,6 +819,7 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 	return bytes.NewReader(buffer), &fileInfo, nil
 }
 
+// SendWebSocketUpgrade upgrades the http connection to web socket.
 func SendWebSocketUpgrade(self *Response, request *Request, callback func(request *Request, response *Response)) {
 	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
 	if upgradeError != nil {
@@ -816,4 +831,27 @@ func SendWebSocketUpgrade(self *Response, request *Request, callback func(reques
 	request.webSocket = conn
 	self.lockedStatusAndHeader = true
 	callback(request, self)
+}
+
+// ServerSqlExecute executes a sql query and returns a function that can be used to extract the results.
+//
+// The resulting function advances the row and copies the columns into the values pointed at by dest.
+func ServerSqlExecute(self *Server, query string, props ...any) func(dest ...any) bool {
+	rows, execError := self.database.Query(query, props...)
+	if execError != nil {
+		ServerNotifyError(self, execError)
+		return func(columns ...any) bool { return false }
+	}
+	defer rows.Close()
+
+	return func(columns ...any) bool {
+		if !rows.Next() {
+			return false
+		}
+		err := rows.Scan(columns...)
+		if err != nil {
+			return false
+		}
+		return true
+	}
 }
