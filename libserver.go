@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
+	uuid "github.com/nu7hatch/gouuid"
 	"io"
 	"log"
 	"net"
@@ -381,6 +382,14 @@ func ServerStart(self *Server) {
 		ErrorLog:       self.errorLogger,
 	}
 
+	if !entryCreated {
+		ServerWithRequestHandler(self, "GET /",
+			func(server *Server, request *Request, response *Response) {
+				SendStatus(response, 404)
+			},
+		)
+	}
+
 	var waiter sync.WaitGroup
 
 	waiter.Add(2)
@@ -434,53 +443,50 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 		pageId = strings.TrimSuffix(pageId, ".svelte")
 	}
 	patternParts := strings.Split(pattern, " ")
-	if len(patternParts) > 1 {
+	patternCounter := len(patternParts)
+	if patternCounter > 1 {
 		sveltePagesToPaths[pageId] = patternParts[1]
 	}
 
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
-		SendEmbeddedFileOrElse(response, request, func() {
-			SendFileOrElse(response, request, func() {
-				configuration := configure(server, request, response)
+		configuration := configure(server, request, response)
 
-				if nil == configuration {
-					ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil configuration", pattern))
-					return
-				}
+		if nil == configuration {
+			ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil configuration", pattern))
+			return
+		}
 
-				if nil == configuration.Globals {
-					configuration.Globals = map[string]v8go.FunctionCallback{}
-				}
+		if nil == configuration.Globals {
+			configuration.Globals = map[string]v8go.FunctionCallback{}
+		}
 
-				if nil == configuration.Data {
-					configuration.Data = map[string]any{}
-				}
+		if nil == configuration.Data {
+			configuration.Data = map[string]any{}
+		}
 
-				parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
-				if parseMultipartFormError != nil {
-					if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
-						ServerNotifyError(server, parseMultipartFormError)
-					}
+		parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
+		if parseMultipartFormError != nil {
+			if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
+				ServerNotifyError(server, parseMultipartFormError)
+			}
 
-					parseFormError := request.HttpRequest.ParseForm()
-					if parseFormError != nil {
-						ServerNotifyError(server, parseFormError)
-					}
-				}
+			parseFormError := request.HttpRequest.ParseForm()
+			if parseFormError != nil {
+				ServerNotifyError(server, parseFormError)
+			}
+		}
 
-				path := map[string]string{}
-				for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
-					if len(name) < 1 {
-						continue
-					}
-					path[name[1]] = request.HttpRequest.PathValue(name[1])
-				}
-				configuration.Data["path"] = path
-				configuration.Data["query"] = request.HttpRequest.URL.Query()
-				configuration.Data["form"] = request.HttpRequest.Form
-				SendSveltePage(response, pageId, configuration)
-			})
-		})
+		path := map[string]string{}
+		for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
+			if len(name) < 1 {
+				continue
+			}
+			path[name[1]] = request.HttpRequest.PathValue(name[1])
+		}
+		configuration.Data["path"] = path
+		configuration.Data["query"] = request.HttpRequest.URL.Query()
+		configuration.Data["form"] = request.HttpRequest.Form
+		SendSveltePage(response, pageId, configuration)
 	})
 }
 
@@ -495,9 +501,11 @@ func ServerWithWebSocketHandler(self *Server, pattern string, callback func(requ
 		return
 	}
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
-		SendWebSocketUpgrade(response, request, callback)
+		SendWebSocketUpgrade(response, callback)
 	})
 }
+
+var entryCreated = false
 
 // ServerWithRequestHandler registers a callback for the given pattern.
 //
@@ -507,33 +515,55 @@ func ServerWithRequestHandler(
 	pattern string,
 	callback func(server *Server, request *Request, response *Response),
 ) {
-	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, request *http.Request) {
-		requestLocal := Request{
+	patternParts := strings.Split(pattern, " ")
+	patternCounter := len(patternParts)
+	isEntry := patternCounter > 1 && strings.HasPrefix(strings.TrimPrefix(patternParts[1], " "), "/")
+
+	if isEntry && !entryCreated {
+		entryCreated = true
+	}
+
+	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, httpRequest *http.Request) {
+		request := Request{
 			server:      self,
-			HttpRequest: request,
+			HttpRequest: httpRequest,
 		}
 
 		httpHeader := writer.Header()
 
-		responseLocal := Response{
+		response := Response{
 			server:                self,
 			writer:                &writer,
 			lockedStatusAndHeader: false,
 			statusCode:            200,
 			header:                &httpHeader,
 		}
-		callback(self, &requestLocal, &responseLocal)
+
+		request.response = &response
+		response.request = &request
+
+		if isEntry {
+			SendEmbeddedFileOrElse(&response, func() {
+				SendFileOrElse(&response, func() {
+					callback(self, &request, &response)
+				})
+			})
+		} else {
+			callback(self, &request, &response)
+		}
 	})
 }
 
 type Request struct {
 	server      *Server
+	response    *Response
 	HttpRequest *http.Request
 	webSocket   *websocket.Conn
 }
 
 type Response struct {
 	server                *Server
+	request               *Request
 	writer                *http.ResponseWriter
 	lockedStatusAndHeader bool
 	statusCode            int
@@ -576,16 +606,17 @@ func ServerLogError(self *Server, err error) {
 }
 
 // SendRedirect redirects the request.
-func SendRedirect(response *Response, location string, statusCode int) {
-	SendStatus(response, statusCode)
-	SendHeader(response, "Location", location)
-	SendEcho(response, "")
+func SendRedirect(self *Response, location string, statusCode int) {
+	SendStatus(self, statusCode)
+	SendHeader(self, "Location", location)
+	SendEcho(self, "")
 }
 
 // SendRedirectToSecure tries to redirect the request to the https server.
 //
 // When the request is already secure, SendRedirectToSecure returns false.
-func SendRedirectToSecure(request *Request, response *Response, statusCode int) bool {
+func SendRedirectToSecure(self *Response, statusCode int) bool {
+	request := self.request
 	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
 		return false
 	}
@@ -594,7 +625,7 @@ func SendRedirectToSecure(request *Request, response *Response, statusCode int) 
 	secureSuffix := fmt.Sprintf(":%d", request.server.securePort)
 	secureHost := strings.Replace(request.HttpRequest.Host, insecureSuffix, secureSuffix, 1)
 	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.HttpRequest.RequestURI)
-	SendRedirect(response, secureLocation, statusCode)
+	SendRedirect(self, secureLocation, statusCode)
 	return true
 }
 
@@ -689,7 +720,8 @@ func VerifyContentType(self *Request, contentTypes ...string) bool {
 
 // SendEmbeddedFileOrIndexOrElse sends the embedded file requested by the client,
 // or the closest index.html embedded file, or else falls back.
-func SendEmbeddedFileOrIndexOrElse(response *Response, request *Request, orElse func()) {
+func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
+	request := self.request
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 
 	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) {
@@ -707,18 +739,19 @@ func SendEmbeddedFileOrIndexOrElse(response *Response, request *Request, orElse 
 
 	reader, info, readerError := createReaderFromEmbeddedFileName(&request.server.embeddedFileSystem, fileName)
 	if readerError != nil {
-		ServerNotifyError(response.server, readerError)
+		ServerNotifyError(self.server, readerError)
 		return
 	}
 
-	SendHeader(response, "Content-Type", Mime(fileName))
-	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
-	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	SendHeader(self, "Content-Type", Mime(fileName))
+	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
 // SendEmbeddedFileOrElse sends the embedded file requested by the client,
 // or the closest index.html embedded file, or else falls back.
-func SendEmbeddedFileOrElse(response *Response, request *Request, orElse func()) {
+func SendEmbeddedFileOrElse(self *Response, orElse func()) {
+	request := self.request
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 	fileName = strings.Split(fileName, "?")[0]
 	fileName = strings.Split(fileName, "&")[0]
@@ -731,18 +764,19 @@ func SendEmbeddedFileOrElse(response *Response, request *Request, orElse func())
 
 	reader, info, readerError := createReaderFromEmbeddedFileName(&request.server.embeddedFileSystem, fileName)
 	if readerError != nil {
-		ServerNotifyError(response.server, readerError)
+		ServerNotifyError(self.server, readerError)
 		return
 	}
 
-	SendHeader(response, "Content-Type", Mime(fileName))
-	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
-	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	SendHeader(self, "Content-Type", Mime(fileName))
+	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
 // SendFileOrIndexOrElse sends the file requested by the client,
 // or the closest index.html file, or else falls back.
-func SendFileOrIndexOrElse(response *Response, request *Request, orElse func()) {
+func SendFileOrIndexOrElse(self *Response, orElse func()) {
+	request := self.request
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) {
@@ -760,17 +794,18 @@ func SendFileOrIndexOrElse(response *Response, request *Request, orElse func()) 
 
 	reader, info, readerError := createReaderFromFileName(fileName)
 	if readerError != nil {
-		ServerNotifyError(response.server, readerError)
+		ServerNotifyError(self.server, readerError)
 		return
 	}
 
-	SendHeader(response, "Content-Type", Mime(fileName))
-	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
-	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	SendHeader(self, "Content-Type", Mime(fileName))
+	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
 // SendFileOrElse sends the file requested by the client, or else falls back.
-func SendFileOrElse(response *Response, request *Request, orElse func()) {
+func SendFileOrElse(self *Response, orElse func()) {
+	request := self.request
 	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
 
 	if !Exists(fileName) || IsDirectory(fileName) {
@@ -780,13 +815,13 @@ func SendFileOrElse(response *Response, request *Request, orElse func()) {
 
 	reader, info, readerError := createReaderFromFileName(fileName)
 	if readerError != nil {
-		ServerNotifyError(response.server, readerError)
+		ServerNotifyError(self.server, readerError)
 		return
 	}
 
-	SendHeader(response, "Content-Type", Mime(fileName))
-	SendHeader(response, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
-	http.ServeContent(*response.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	SendHeader(self, "Content-Type", Mime(fileName))
+	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
 func createReaderFromEmbeddedFileName(efs *embed.FS, fileName string) (*bytes.Reader, *os.FileInfo, error) {
@@ -826,7 +861,8 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 }
 
 // SendWebSocketUpgrade upgrades the http connection to web socket.
-func SendWebSocketUpgrade(self *Response, request *Request, callback func(request *Request, response *Response)) {
+func SendWebSocketUpgrade(self *Response, callback func(request *Request, response *Response)) {
+	request := self.request
 	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
 	if upgradeError != nil {
 		ServerNotifyError(request.server, upgradeError)
@@ -889,4 +925,158 @@ func ServerSqlCreateTable[Table any](self *Server) {
 	if err != nil {
 		ServerNotifyError(self, err)
 	}
+}
+
+type svelteRouterProps struct {
+	PageId string            `json:"pageId"`
+	Data   map[string]any    `json:"data"`
+	Paths  map[string]string `json:"paths"`
+}
+
+type SveltePageConfiguration struct {
+	Render  RenderMode
+	Data    map[string]any
+	Globals map[string]v8go.FunctionCallback
+}
+
+var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
+var sveltePagesToPaths = map[string]string{}
+
+// SendSveltePage renders and echos a svelte page.
+func SendSveltePage(
+	self *Response,
+	pageId string,
+	configuration *SveltePageConfiguration,
+) {
+	if nil == configuration {
+		configuration = &SveltePageConfiguration{
+			Render:  ModeFull,
+			Data:    map[string]any{},
+			Globals: map[string]v8go.FunctionCallback{},
+		}
+	}
+
+	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
+
+	var indexBytes []byte
+
+	if "1" == os.Getenv("DEV") {
+		indexBytesLocal, readError := os.ReadFile(fileNameIndex)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		indexBytes = indexBytesLocal
+	} else {
+		indexBytesLocal, readError := self.server.embeddedFileSystem.ReadFile(fileNameIndex)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		indexBytes = indexBytesLocal
+	}
+
+	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
+		PageId: pageId,
+		Data:   configuration.Data,
+		Paths:  sveltePagesToPaths,
+	})
+	if jsonError != nil {
+		ServerNotifyError(self.server, jsonError)
+		return
+	}
+	routerPropsString := string(routerPropsBytes)
+
+	targetId, targetIdError := uuid.NewV4()
+	if targetIdError != nil {
+		panic(targetIdError)
+	}
+
+	var index string
+	if ModeFull == configuration.Render {
+		head, body, renderError := render(self, routerPropsString, configuration.Globals)
+		if renderError != nil {
+			ServerNotifyError(self.server, renderError)
+			return
+		}
+		index = strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					strings.Replace(
+						string(indexBytes),
+						"<!--app-target-->",
+						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
+						1,
+					),
+					"<!--app-body-->",
+					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
+					1,
+				),
+				"<!--app-head-->",
+				head,
+				1,
+			),
+			"<!--app-data-->",
+			fmt.Sprintf(
+				`<script type="application/javascript">function props(){return %s}</script>`,
+				routerPropsString,
+			),
+			1,
+		)
+	} else if ModeClient == configuration.Render {
+		index = strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					strings.Replace(
+						string(indexBytes),
+						"<!--app-target-->",
+						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
+						1,
+					),
+					"<!--app-body-->",
+					fmt.Sprintf(`<div id="%s"></div>`, targetId),
+					1,
+				),
+				"<!--app-head-->",
+				"",
+				1,
+			),
+			"<!--app-data-->",
+			fmt.Sprintf(
+				`<script type="application/javascript">function props(){return %s}</script>`,
+				routerPropsString,
+			),
+			1,
+		)
+	} else if ModeServer == configuration.Render {
+		head, body, renderError := render(self, routerPropsString, configuration.Globals)
+		if renderError != nil {
+			ServerNotifyError(self.server, renderError)
+			return
+		}
+		index = strings.Replace(
+			strings.Replace(
+				strings.Replace(
+					strings.Replace(
+						noScriptPattern.ReplaceAllString(string(indexBytes), ""),
+						"<!--app-target-->",
+						``,
+						1,
+					),
+					"<!--app-body-->",
+					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
+					1,
+				),
+				"<!--app-head-->",
+				head,
+				1,
+			),
+			"<!--app-data-->",
+			"",
+			1,
+		)
+	}
+
+	SendHeader(self, "Content-Type", "text/html")
+	SendEcho(self, index)
 }
