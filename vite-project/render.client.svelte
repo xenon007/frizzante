@@ -2,10 +2,10 @@
     <!--app-imports-->
     import {setContext} from "svelte";
 
-    let {pageId, paths, data} = $props()
-    let reactivePageId = $state(pageId)
-    let reactiveData = $state({...data})
-    setContext("data", reactiveData)
+    let {pageId: serverPageId, paths, data: serverData} = $props()
+    let pageId = $state(serverPageId)
+    let data = $state({...serverData})
+    setContext("data", data)
     setContext("page", page)
     setContext("pagePath", pagePath)
     window.addEventListener('popstate', (event) => {
@@ -36,16 +36,25 @@
         return path
     }
 
-    function page(pageId) {
-        if (!paths[pageId]) {
+    function page(pageIdLocal) {
+        if (!paths[pageIdLocal]) {
             return
         }
-        const path = pagePath(pageId)
+
+        const path = pagePath(pageIdLocal)
+        history.pushState({pageIdLocal}, '', path);
+        pageId = pageIdLocal
 
         fetch(path, {headers: {"Accept": "application/json"}}).then(async (response) => {
-            reactiveData = await response.json()
-            history.pushState({pageId}, '', path);
-            reactivePageId = pageId
+            const newData = await response.json()
+            
+            for (const key in data) {
+                delete data[key]
+            }
+
+            for (const key in newData) {
+                data[key] = newData[key]
+            }
         })
     }
 </script>

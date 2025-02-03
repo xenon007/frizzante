@@ -122,11 +122,11 @@ func prepareClientLoader() error {
 	counter := 0
 	for pageId, fileName := range sveltePagesToFileNames {
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === reactivePageId}\n", pageId))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", pageId))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === reactivePageId}\n", pageId))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", pageId))
 		}
-		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} {pageId} />\n", fileName))
+		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
 		counter++
 	}
 	if counter > 0 {

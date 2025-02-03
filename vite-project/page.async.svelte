@@ -2,12 +2,7 @@
     let PreviousComponent = $state(false)
 </script>
 <script>
-    import {getContext, setContext} from "svelte";
-
     let {from, pageId} = $props()
-    let data = getContext("data")
-
-    const pagePath = getContext("pagePath")
     from.then((page) => {
         PreviousComponent = page
     })
