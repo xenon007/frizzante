@@ -46,6 +46,12 @@ type Server struct {
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
 	webSocketUpgrader      *websocket.Upgrader
+	sessionHandler         func(string) (
+		get func(key string, defaultValue any) (value any),
+		set func(key string, value any),
+		unset func(key string),
+		destroy func(),
+	)
 }
 
 // ServerCreate creates a server.
@@ -507,7 +513,7 @@ func ServerWithSveltePage(self *Server, pattern string, pageId string, configure
 //
 // If the given pattern conflicts with one that is already registered,
 // or it uses a verb other than GET, ServerWithWebSocketHandler panics.
-func ServerWithWebSocketHandler(self *Server, pattern string, callback func(request *Request, response *Response)) {
+func ServerWithWebSocketHandler(self *Server, pattern string, callback func(server *Server, request *Request, response *Response)) {
 	if !strings.HasPrefix(pattern, "GET ") {
 		panic(fmt.Errorf("all web socket patterns must be defined using the GET http verb, received `%s` instead", pattern))
 		return
@@ -674,7 +680,7 @@ func SendHeader(self *Response, key string, value string) {
 
 // SendCookie sends a cookies to the client.
 func SendCookie(self *Response, key string, value string) {
-	SendHeader(self, "Set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
+	SendHeader(self, "set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
 }
 
 // SendContent sends binary safe content.
@@ -730,7 +736,7 @@ func VerifyContentType(self *Request, contentTypes ...string) bool {
 	return false
 }
 
-// VerifyContentType checks if the incoming request accepts any of the given content-types.
+// VerifyAccept checks if the incoming request accepts any of the given content-types.
 func VerifyAccept(self *Request, contentTypes ...string) bool {
 	requestedAcceptMime := self.HttpRequest.Header.Get("Accept")
 	for _, acceptedMime := range contentTypes {
@@ -885,7 +891,7 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 }
 
 // SendWebSocketUpgrade upgrades the http connection to web socket.
-func SendWebSocketUpgrade(self *Response, callback func(request *Request, response *Response)) {
+func SendWebSocketUpgrade(self *Response, callback func(server *Server, request *Request, response *Response)) {
 	request := self.request
 	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
 	if upgradeError != nil {
@@ -896,7 +902,7 @@ func SendWebSocketUpgrade(self *Response, callback func(request *Request, respon
 	self.webSocket = conn
 	request.webSocket = conn
 	self.lockedStatusAndHeader = true
-	callback(request, self)
+	callback(self.server, request, self)
 }
 
 func serverSqlExecuteFetchFallback(dest ...any) bool { return false }
@@ -1138,4 +1144,17 @@ func SendSveltePage(
 
 	SendHeader(self, "Content-Type", "text/html")
 	SendEcho(self, index)
+}
+
+// ServerWithSessionHandler sets the session handler.
+func ServerWithSessionHandler(
+	self *Server,
+	sessionHandler func(string) (
+		get func(key string, defaultValue any) (value any),
+		set func(key string, value any),
+		unset func(key string),
+		destroy func(),
+	),
+) {
+	self.sessionHandler = sessionHandler
 }
