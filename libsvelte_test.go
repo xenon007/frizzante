@@ -12,7 +12,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerWithPort(server, 8084)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithErrorHandler(server, func(err error) {
+	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
@@ -45,7 +45,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerWithPort(server, 8085)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithErrorHandler(server, func(err error) {
+	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {

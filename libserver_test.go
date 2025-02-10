@@ -170,7 +170,7 @@ func TestServerOnRequest(test *testing.T) {
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendEcho(response, expected)
 	})
-	ServerWithErrorHandler(server, func(err error) {
+	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)
@@ -192,7 +192,7 @@ func TestServerOnError(test *testing.T) {
 	actual := ""
 	expected := "hello\nworld\n"
 	server := ServerCreate()
-	ServerWithErrorHandler(server, func(err error) {
+	ServerWithErrorReceiver(server, func(err error) {
 		actual += err.Error() + "\n"
 	})
 	ServerNotifyError(server, fmt.Errorf("hello"))
@@ -211,7 +211,7 @@ func TestStatus(test *testing.T) {
 		SendStatus(response, expected)
 		SendEcho(response, "Ok")
 	})
-	ServerWithErrorHandler(server, func(err error) {
+	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)
@@ -240,7 +240,7 @@ func TestHeader(test *testing.T) {
 		SendHeader(response, "Content-Type", expected)
 		SendEcho(response, "{}")
 	})
-	ServerWithErrorHandler(server, func(err error) {
+	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)

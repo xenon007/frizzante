@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -434,15 +435,21 @@ func ServerStop(self *Server) {
 
 var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
-// ServerWithSveltePage creates a request handler that serves a svelte page.
-func ServerWithSveltePage(self *Server, pattern string, pageId string, configure func(*Server, *Request, *Response) *SveltePageConfiguration) {
+// ServerWithPageRequestHandler registers a callback for the given pattern and maps a svelte page to it.
+func ServerWithPageRequestHandler(
+	self *Server,
+	pattern string,
+	pageId string,
+	configure func(*Server, *Request, *Response) *SveltePageConfiguration,
+) {
 	if strings.HasSuffix(pageId, ".svelte") {
 		pageId = strings.TrimSuffix(pageId, ".svelte")
 	}
+
 	patternParts := strings.Split(pattern, " ")
 	patternCounter := len(patternParts)
 	if patternCounter > 1 {
-		sveltePagesToPaths[pageId] = patternParts[1]
+		sveltePagesToPaths[pageId] = path.Join(patternParts[1:]...)
 	}
 
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
@@ -526,7 +533,7 @@ func ServerWithRequestHandler(
 ) {
 	patternParts := strings.Split(pattern, " ")
 	patternCounter := len(patternParts)
-	isEntry := patternCounter > 1 && strings.HasPrefix(strings.TrimPrefix(patternParts[1], " "), "/")
+	isEntry := patternCounter > 1 && strings.HasPrefix(strings.TrimPrefix(filepath.Join(patternParts[1:]...), " "), "/")
 
 	if isEntry && !entryCreated {
 		entryCreated = true
@@ -580,8 +587,8 @@ type Response struct {
 	webSocket             *websocket.Conn
 }
 
-// ServerWithErrorHandler sets the error handler.
-func ServerWithErrorHandler(self *Server, callback func(err error)) {
+// ServerWithErrorReceiver sets the error receiver.
+func ServerWithErrorReceiver(self *Server, callback func(err error)) {
 	self.errorHandler = callback
 }
 
@@ -620,7 +627,7 @@ func SendRedirectToSecure(self *Response, statusCode int) bool {
 // so that the next time you invoke this
 // function it will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorHandler.
+// You can retrieve this error using ServerWithErrorReceiver.
 func SendStatus(self *Response, code int) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("status is locked"))
@@ -635,7 +642,7 @@ func SendStatus(self *Response, code int) {
 //
 // This means the status will become locked and further attempts to send the status will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorHandler
+// You can retrieve this error using ServerWithErrorReceiver
 func SendHeader(self *Response, key string, value string) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("headers locked"))
@@ -656,7 +663,7 @@ func SendCookie(self *Response, key string, value string) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorHandler.
+// You can retrieve this error using ServerWithErrorReceiver.
 func SendContent(self *Response, content []byte) {
 	if !self.lockedStatusAndHeader {
 		(*self.writer).WriteHeader(self.statusCode)
@@ -684,7 +691,7 @@ func SendContent(self *Response, content []byte) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorHandler.
+// You can retrieve this error using ServerWithErrorReceiver.
 //
 // See fmt.Sprintf.
 func SendEcho(self *Response, content string) {
