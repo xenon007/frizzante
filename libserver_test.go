@@ -68,20 +68,10 @@ func TestServerWithMaxHeaderBytes(test *testing.T) {
 func TestServerWithErrorLogger(test *testing.T) {
 	server := ServerCreate()
 	expected := log.Default()
-	ServerWithErrorLogger(server, expected)
-	actual := server.errorLogger
+	ServerWithLogger(server, expected)
+	actual := server.logger
 	if actual != expected {
 		test.Fatalf("server was expected to have default error logger")
-	}
-}
-
-func TestServerWithInformationLogger(test *testing.T) {
-	server := ServerCreate()
-	expected := log.Default()
-	ServerWithInformationLogger(server, expected)
-	actual := server.informationLogger
-	if actual != expected {
-		test.Fatalf("server was expected to have default information logger")
 	}
 }
 
@@ -180,7 +170,7 @@ func TestServerOnRequest(test *testing.T) {
 	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendEcho(response, expected)
 	})
-	ServerOnError(server, func(err error) {
+	ServerWithErrorHandler(server, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)
@@ -198,26 +188,11 @@ func TestServerOnRequest(test *testing.T) {
 	}
 }
 
-func TestServerOnInformation(test *testing.T) {
-	actual := ""
-	expected := "hello\nworld\n"
-	server := ServerCreate()
-	ServerOnInformation(server, func(information string) {
-		actual += information + "\n"
-	})
-	ServerNotifyInformation(server, "hello")
-	ServerNotifyInformation(server, "world")
-
-	if actual != expected {
-		test.Fatalf("server was expected to log informations '%s', received '%s' instead", expected, actual)
-	}
-}
-
 func TestServerOnError(test *testing.T) {
 	actual := ""
 	expected := "hello\nworld\n"
 	server := ServerCreate()
-	ServerOnError(server, func(err error) {
+	ServerWithErrorHandler(server, func(err error) {
 		actual += err.Error() + "\n"
 	})
 	ServerNotifyError(server, fmt.Errorf("hello"))
@@ -236,7 +211,7 @@ func TestStatus(test *testing.T) {
 		SendStatus(response, expected)
 		SendEcho(response, "Ok")
 	})
-	ServerOnError(server, func(err error) {
+	ServerWithErrorHandler(server, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)
@@ -265,7 +240,7 @@ func TestHeader(test *testing.T) {
 		SendHeader(response, "Content-Type", expected)
 		SendEcho(response, "{}")
 	})
-	ServerOnError(server, func(err error) {
+	ServerWithErrorHandler(server, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)

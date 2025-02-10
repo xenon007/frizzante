@@ -37,12 +37,10 @@ type Server struct {
 	readTimeout            time.Duration
 	writeTimeout           time.Duration
 	maxHeaderBytes         int
-	errorLogger            *log.Logger
-	informationLogger      *log.Logger
+	logger                 *log.Logger
 	certificate            string
 	certificateKey         string
-	informationHandler     []func(string)
-	errorHandler           []func(error)
+	errorHandler           func(error)
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
 	webSocketUpgrader      *websocket.Upgrader
@@ -66,12 +64,10 @@ func ServerCreate() *Server {
 		readTimeout:        10 * time.Second,
 		writeTimeout:       10 * time.Second,
 		maxHeaderBytes:     3 * MB,
-		errorLogger:        log.Default(),
-		informationLogger:  log.Default(),
+		logger:             log.Default(),
 		certificate:        "",
 		certificateKey:     "",
-		informationHandler: []func(string){},
-		errorHandler:       []func(error){},
+		errorHandler:       func(error) {},
 		temporaryDirectory: ".temp",
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -132,14 +128,9 @@ func ServerWithMaxHeaderBytes(self *Server, maxHeaderBytes int) {
 	self.maxHeaderBytes = maxHeaderBytes
 }
 
-// ServerWithErrorLogger sets the error logger.
-func ServerWithErrorLogger(self *Server, errorLogger *log.Logger) {
-	self.errorLogger = errorLogger
-}
-
-// ServerWithInformationLogger sets the information logger.
-func ServerWithInformationLogger(self *Server, informationLogger *log.Logger) {
-	self.informationLogger = informationLogger
+// ServerWithLogger sets the server logger.
+func ServerWithLogger(self *Server, logger *log.Logger) {
+	self.logger = logger
 }
 
 // ServerWithCertificateAndKey sets the tls configuration.
@@ -385,7 +376,7 @@ func ServerStart(self *Server) {
 		ReadTimeout:    self.readTimeout,
 		WriteTimeout:   self.writeTimeout,
 		MaxHeaderBytes: self.maxHeaderBytes,
-		ErrorLog:       self.errorLogger,
+		ErrorLog:       self.logger,
 	}
 
 	if !entryCreated {
@@ -402,11 +393,11 @@ func ServerStart(self *Server) {
 
 	go func() {
 		address := fmt.Sprintf("%s:%d", self.hostName, self.port)
-		self.informationLogger.Printf("listening for requests at http://%s", address)
+		self.logger.Printf("listening for requests at http://%s", address)
 		err := http.ListenAndServe(address, self.mux)
 		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
-				self.informationLogger.Println("shutting down server")
+				self.logger.Println("shutting down server")
 				return
 			}
 			panic(err.Error())
@@ -416,11 +407,11 @@ func ServerStart(self *Server) {
 	go func() {
 		secureAddress := fmt.Sprintf("%s:%d", self.hostName, self.securePort)
 		if "" != self.certificate && "" != self.certificateKey {
-			self.informationLogger.Printf("listening for requests at https://%s", secureAddress)
+			self.logger.Printf("listening for requests at https://%s", secureAddress)
 			err := http.ListenAndServeTLS(secureAddress, self.certificate, self.certificateKey, self.mux)
 			if err != nil {
 				if errors.Is(err, http.ErrServerClosed) {
-					self.informationLogger.Println("shutting down server")
+					self.logger.Println("shutting down server")
 					return
 				}
 				panic(err.Error())
@@ -589,38 +580,14 @@ type Response struct {
 	webSocket             *websocket.Conn
 }
 
-// ServerOnInformation handles server information.
-func ServerOnInformation(self *Server, callback func(information string)) {
-	self.informationHandler = append(self.informationHandler, callback)
-}
-
-// ServerOnError handles server errors.
-func ServerOnError(self *Server, callback func(err error)) {
-	self.errorHandler = append(self.errorHandler, callback)
-}
-
-// ServerNotifyInformation notifies the server of some information.
-func ServerNotifyInformation(self *Server, information string) {
-	for _, listener := range self.informationHandler {
-		listener(information)
-	}
+// ServerWithErrorHandler sets the error handler.
+func ServerWithErrorHandler(self *Server, callback func(err error)) {
+	self.errorHandler = callback
 }
 
 // ServerNotifyError notifies the server of an error.
 func ServerNotifyError(self *Server, err error) {
-	for _, listener := range self.errorHandler {
-		listener(err)
-	}
-}
-
-// ServerLogInformation logs information using the server's logger.
-func ServerLogInformation(self *Server, information string) {
-	self.informationLogger.Println(information)
-}
-
-// ServerLogError logs an error using the server's logger.
-func ServerLogError(self *Server, err error) {
-	self.errorLogger.Println(err.Error())
+	self.errorHandler(err)
 }
 
 // SendRedirect redirects the request.
@@ -653,7 +620,7 @@ func SendRedirectToSecure(self *Response, statusCode int) bool {
 // so that the next time you invoke this
 // function it will fail with an error.
 //
-// You can retrieve this error using ServerOnError.
+// You can retrieve this error using ServerWithErrorHandler.
 func SendStatus(self *Response, code int) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("status is locked"))
@@ -668,7 +635,7 @@ func SendStatus(self *Response, code int) {
 //
 // This means the status will become locked and further attempts to send the status will fail with an error.
 //
-// You can retrieve this error using ServerOnError
+// You can retrieve this error using ServerWithErrorHandler
 func SendHeader(self *Response, key string, value string) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("headers locked"))
@@ -689,7 +656,7 @@ func SendCookie(self *Response, key string, value string) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerOnError.
+// You can retrieve this error using ServerWithErrorHandler.
 func SendContent(self *Response, content []byte) {
 	if !self.lockedStatusAndHeader {
 		(*self.writer).WriteHeader(self.statusCode)
@@ -717,7 +684,7 @@ func SendContent(self *Response, content []byte) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerOnError.
+// You can retrieve this error using ServerWithErrorHandler.
 //
 // See fmt.Sprintf.
 func SendEcho(self *Response, content string) {
