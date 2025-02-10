@@ -435,12 +435,20 @@ func ServerStop(self *Server) {
 
 var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
-// ServerWithPageRequestHandler registers a callback for the given pattern and maps a svelte page to it.
-func ServerWithPageRequestHandler(
+func PageWithData(page *Page, key string, value any) {
+	page.data[key] = value
+}
+
+func PageWithRenderMode(page *Page, render RenderMode) {
+	page.render = render
+}
+
+// ServerWithPageHandler registers a callback for the given pattern and maps a svelte page to it.
+func ServerWithRequestPageHandler(
 	self *Server,
 	pattern string,
 	pageId string,
-	configure func(*Server, *Request, *Response) *SveltePageConfiguration,
+	callback func(*Server, *Request, *Response, *Page),
 ) {
 	if strings.HasSuffix(pageId, ".svelte") {
 		pageId = strings.TrimSuffix(pageId, ".svelte")
@@ -449,23 +457,28 @@ func ServerWithPageRequestHandler(
 	patternParts := strings.Split(pattern, " ")
 	patternCounter := len(patternParts)
 	if patternCounter > 1 {
-		sveltePagesToPaths[pageId] = path.Join(patternParts[1:]...)
+		pagesToPaths[pageId] = path.Join(patternParts[1:]...)
 	}
 
 	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
-		configuration := configure(server, request, response)
+		page := &Page{
+			render: ModeFull,
+			data:   map[string]interface{}{},
+		}
 
-		if nil == configuration {
-			ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil configuration", pattern))
+		callback(server, request, response, page)
+
+		if nil == page {
+			ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
 			return
 		}
 
-		if nil == configuration.Globals {
-			configuration.Globals = map[string]v8go.FunctionCallback{}
+		if nil == page.globals {
+			page.globals = map[string]v8go.FunctionCallback{}
 		}
 
-		if nil == configuration.Data {
-			configuration.Data = map[string]any{}
+		if nil == page.data {
+			page.data = map[string]any{}
 		}
 
 		parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
@@ -480,19 +493,19 @@ func ServerWithPageRequestHandler(
 			}
 		}
 
-		path := map[string]string{}
+		pathEntry := map[string]string{}
 		for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
 			if len(name) < 1 {
 				continue
 			}
-			path[name[1]] = request.HttpRequest.PathValue(name[1])
+			pathEntry[name[1]] = request.HttpRequest.PathValue(name[1])
 		}
-		configuration.Data["path"] = path
-		configuration.Data["query"] = request.HttpRequest.URL.Query()
-		configuration.Data["form"] = request.HttpRequest.Form
+		page.data["path"] = pathEntry
+		page.data["query"] = request.HttpRequest.URL.Query()
+		page.data["form"] = request.HttpRequest.Form
 
 		if VerifyAccept(request, "application/json") {
-			data, marshalError := json.Marshal(configuration.Data)
+			data, marshalError := json.Marshal(page.data)
 			if marshalError != nil {
 				ServerNotifyError(server, marshalError)
 				return
@@ -502,7 +515,7 @@ func ServerWithPageRequestHandler(
 			return
 		}
 
-		SendSveltePage(response, pageId, configuration)
+		SendPage(response, pageId, page)
 	})
 }
 
@@ -884,9 +897,9 @@ func serverSqlExecuteDestroyFallback()               {}
 
 // ServerSqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
 func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
-	transaction, transationError := self.database.Begin()
-	if transationError != nil {
-		ServerNotifyError(self, transationError)
+	transaction, transactionError := self.database.Begin()
+	if transactionError != nil {
+		ServerNotifyError(self, transactionError)
 		return nil
 	}
 
@@ -972,26 +985,26 @@ type svelteRouterProps struct {
 	Paths  map[string]string `json:"paths"`
 }
 
-type SveltePageConfiguration struct {
-	Render  RenderMode
-	Data    map[string]any
-	Globals map[string]v8go.FunctionCallback
+type Page struct {
+	render  RenderMode
+	data    map[string]any
+	globals map[string]v8go.FunctionCallback
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
-var sveltePagesToPaths = map[string]string{}
+var pagesToPaths = map[string]string{}
 
-// SendSveltePage renders and echos a svelte page.
-func SendSveltePage(
+// SendPage renders and echos a svelte page.
+func SendPage(
 	self *Response,
 	pageId string,
-	configuration *SveltePageConfiguration,
+	configuration *Page,
 ) {
 	if nil == configuration {
-		configuration = &SveltePageConfiguration{
-			Render:  ModeFull,
-			Data:    map[string]any{},
-			Globals: map[string]v8go.FunctionCallback{},
+		configuration = &Page{
+			render:  ModeFull,
+			data:    map[string]any{},
+			globals: map[string]v8go.FunctionCallback{},
 		}
 	}
 
@@ -1017,13 +1030,15 @@ func SendSveltePage(
 
 	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
 		PageId: pageId,
-		Data:   configuration.Data,
-		Paths:  sveltePagesToPaths,
+		Data:   configuration.data,
+		Paths:  pagesToPaths,
 	})
+
 	if jsonError != nil {
 		ServerNotifyError(self.server, jsonError)
 		return
 	}
+
 	routerPropsString := string(routerPropsBytes)
 
 	targetId, targetIdError := uuid.NewV4()
@@ -1032,8 +1047,8 @@ func SendSveltePage(
 	}
 
 	var index string
-	if ModeFull == configuration.Render {
-		head, body, renderError := render(self, routerPropsString, configuration.Globals)
+	if ModeFull == configuration.render {
+		head, body, renderError := render(self, routerPropsString, configuration.globals)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
 			return
@@ -1062,7 +1077,7 @@ func SendSveltePage(
 			),
 			1,
 		)
-	} else if ModeClient == configuration.Render {
+	} else if ModeClient == configuration.render {
 		index = strings.Replace(
 			strings.Replace(
 				strings.Replace(
@@ -1087,8 +1102,8 @@ func SendSveltePage(
 			),
 			1,
 		)
-	} else if ModeServer == configuration.Render {
-		head, body, renderError := render(self, routerPropsString, configuration.Globals)
+	} else if ModeServer == configuration.render {
+		head, body, renderError := render(self, routerPropsString, configuration.globals)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
 			return

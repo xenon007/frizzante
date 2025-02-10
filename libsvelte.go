@@ -11,9 +11,9 @@ import (
 type RenderMode int64
 
 const (
-	ModeServer RenderMode = 0 // Render only on the server.
-	ModeClient RenderMode = 1 // Render only on the client.
-	ModeFull   RenderMode = 2 // Render on both the server and the client.
+	ModeServer RenderMode = 0 // render only on the server.
+	ModeClient RenderMode = 1 // render only on the client.
+	ModeFull   RenderMode = 2 // render on both the server and the client.
 )
 
 func render(response *Response, stringProps string, globals map[string]v8go.FunctionCallback) (string, string, error) {
