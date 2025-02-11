@@ -381,7 +381,7 @@ func ServerStart(self *Server) {
 	}
 
 	if !entryCreated {
-		ServerWithRequestHandler(self, "GET /",
+		ServerWithRoute(self, "GET /",
 			func(server *Server, request *Request, response *Response) {
 				SendStatus(response, 404)
 			},
@@ -443,8 +443,8 @@ func PageWithRenderMode(page *Page, render RenderMode) {
 	page.render = render
 }
 
-// ServerWithPageHandler registers a callback for the given pattern and maps a svelte page to it.
-func ServerWithRequestPageHandler(
+// ServerWithPage registers a callback for the given pattern and maps a svelte page to it.
+func ServerWithPage(
 	self *Server,
 	pattern string,
 	pageId string,
@@ -460,7 +460,7 @@ func ServerWithRequestPageHandler(
 		pagesToPaths[pageId] = path.Join(patternParts[1:]...)
 	}
 
-	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
+	ServerWithRoute(self, pattern, func(server *Server, request *Request, response *Response) {
 		page := &Page{
 			render: ModeFull,
 			data:   map[string]interface{}{},
@@ -529,17 +529,17 @@ func ServerWithWebSocketHandler(self *Server, pattern string, callback func(serv
 		panic(fmt.Errorf("all web socket patterns must be defined using the GET http verb, received `%s` instead", pattern))
 		return
 	}
-	ServerWithRequestHandler(self, pattern, func(server *Server, request *Request, response *Response) {
+	ServerWithRoute(self, pattern, func(server *Server, request *Request, response *Response) {
 		SendWebSocketUpgrade(response, callback)
 	})
 }
 
 var entryCreated = false
 
-// ServerWithRequestHandler registers a callback for the given pattern.
+// ServerWithRoute registers a callback for the given pattern.
 //
-// If the given pattern conflicts with one that is already registered, ServerWithRequestHandler panics.
-func ServerWithRequestHandler(
+// If the given pattern conflicts with one that is already registered, ServerWithRoute panics.
+func ServerWithRoute(
 	self *Server,
 	pattern string,
 	callback func(server *Server, request *Request, response *Response),

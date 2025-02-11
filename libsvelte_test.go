@@ -15,7 +15,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendPage(response, "welcome", &Page{
 			render: ModeServer,
 			data: map[string]any{
@@ -48,7 +48,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerWithRequestHandler(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendPage(response, "welcome", &Page{
 			render: ModeClient,
 			data: map[string]any{
