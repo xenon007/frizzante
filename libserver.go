@@ -329,6 +329,8 @@ func ServerTemporaryDirectoryClear(self *Server) {
 }
 
 // ReceiveCookie reads the contents of a cookie from the message and returns the value.
+//
+// Compatible with web sockets.
 func ReceiveCookie(self *Request, key string) string {
 	cookie, cookieError := self.HttpRequest.Cookie(key)
 	if cookieError != nil {
@@ -344,6 +346,8 @@ func ReceiveCookie(self *Request, key string) string {
 }
 
 // ReceiveMessage reads the contents of the message and returns the value.
+//
+// Compatible with web sockets.
 func ReceiveMessage(self *Request) string {
 	if self.webSocket != nil {
 		_, readBytes, readError := self.webSocket.ReadMessage()
@@ -363,6 +367,8 @@ func ReceiveMessage(self *Request) string {
 }
 
 // ReceiveJson reads the message as json and stores the result into value.
+//
+// Compatible with web sockets.
 func ReceiveJson[T any](self *Request, value *T) {
 	if self.webSocket != nil {
 		jsonError := self.webSocket.ReadJSON(value)
@@ -407,21 +413,29 @@ func ReceiveForm(self *Request) *url.Values {
 }
 
 // ReceiveQuery reads a query field and returns the value.
+//
+// Compatible with web sockets.
 func ReceiveQuery(self *Request, name string) string {
 	return self.HttpRequest.URL.Query().Get(name)
 }
 
 // ReceivePath reads a path fields and returns the value.
+//
+// Compatible with web sockets.
 func ReceivePath(self *Request, name string) string {
 	return self.HttpRequest.PathValue(name)
 }
 
 // ReceiveHeader reads a header field and returns the value.
+//
+// Compatible with web sockets.
 func ReceiveHeader(self *Request, key string) string {
 	return self.HttpRequest.Header.Get(key)
 }
 
 // ReceiveContentType reads the Content-Type header field and returns the value.
+//
+// Compatible with web sockets.
 func ReceiveContentType(self *Request) string {
 	return self.HttpRequest.Header.Get("Content-Type")
 }
@@ -577,21 +591,6 @@ func ServerWithPage(
 	})
 }
 
-// ServerWithWebSocketHandler upgrades all incoming requests to the given pattern
-// to web sockets and invokes the callback before closing the connection.
-//
-// If the given pattern conflicts with one that is already registered,
-// or it uses a verb other than GET, ServerWithWebSocketHandler panics.
-func ServerWithWebSocketHandler(self *Server, pattern string, callback func(server *Server, request *Request, response *Response)) {
-	if !strings.HasPrefix(pattern, "GET ") {
-		panic(fmt.Errorf("all web socket patterns must be defined using the GET http verb, received `%s` instead", pattern))
-		return
-	}
-	ServerWithRoute(self, pattern, func(server *Server, request *Request, response *Response) {
-		SendWebSocketUpgrade(response, callback)
-	})
-}
-
 var entryCreated = false
 
 // ServerWithRoute registers a callback for the given pattern.
@@ -735,6 +734,8 @@ func SendCookie(self *Response, key string, value string) {
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
 // You can retrieve this error using ServerWithErrorReceiver.
+//
+// Compatible with web sockets.
 func SendContent(self *Response, content []byte) {
 	if !self.lockedStatusAndHeader {
 		(*self.writer).WriteHeader(self.statusCode)
@@ -764,9 +765,26 @@ func SendContent(self *Response, content []byte) {
 //
 // You can retrieve this error using ServerWithErrorReceiver.
 //
-// See fmt.Sprintf.
+// Compatible with web sockets.
 func SendEcho(self *Response, content string) {
 	SendContent(self, []byte(content))
+}
+
+// SendJson sends json content.
+//
+// If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
+//
+// The status code and the header will become locked and further attempts to send either of them will fail with an error.
+//
+// You can retrieve this error using ServerWithErrorReceiver.
+//
+// Compatible with web sockets.
+func SendJson(self *Response, payload any) {
+	content, marshalError := json.Marshal(payload)
+	if marshalError != nil {
+		ServerNotifyError(self.server, marshalError)
+	}
+	SendContent(self, content)
 }
 
 // VerifyContentType checks if the incoming request has any of the given content-types.
@@ -936,7 +954,7 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 }
 
 // SendWebSocketUpgrade upgrades the http connection to web socket.
-func SendWebSocketUpgrade(self *Response, callback func(server *Server, request *Request, response *Response)) {
+func SendWebSocketUpgrade(self *Response, callback func()) {
 	request := self.request
 	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
 	if upgradeError != nil {
@@ -947,7 +965,7 @@ func SendWebSocketUpgrade(self *Response, callback func(server *Server, request 
 	self.webSocket = conn
 	request.webSocket = conn
 	self.lockedStatusAndHeader = true
-	callback(self.server, request, self)
+	callback()
 }
 
 func serverSqlFindNextFallback(dest ...any) bool { return false }
