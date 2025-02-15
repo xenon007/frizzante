@@ -72,7 +72,7 @@ func HttpDelete(path string, header map[string]string) error {
 }
 
 // HttpPost sends an http request using the POST verb.
-func HttpPost(path string, header map[string]string, contents string) (string, error) {
+func HttpPost(path string, contents string, header map[string]string) (string, error) {
 	if nil == header {
 		header = map[string]string{}
 	}

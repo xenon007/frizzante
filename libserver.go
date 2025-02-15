@@ -45,7 +45,7 @@ type Server struct {
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
 	webSocketUpgrader      *websocket.Upgrader
-	sessionHandler         func(string) (
+	sessionOperator        func(string) (
 		get func(key string, defaultValue any) (value any),
 		set func(key string, value any),
 		unset func(key string),
@@ -55,6 +55,7 @@ type Server struct {
 
 // ServerCreate creates a server.
 func ServerCreate() *Server {
+	var memory = map[string]map[string]any{}
 	return &Server{
 		hostName:           "127.0.0.1",
 		port:               8081,
@@ -73,6 +74,63 @@ func ServerCreate() *Server {
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
+		},
+		sessionOperator: func(id string) (
+			get func(key string, defaultValue any) (value any),
+			set func(key string, value any),
+			unset func(key string),
+			destroy func(),
+		) {
+			get = func(key string, defaultValue any) (value any) {
+				localMemory, localMemoryExists := memory[id]
+
+				if !localMemoryExists {
+					localMemory = map[string]any{}
+					memory[id] = localMemory
+				}
+
+				sessionItem, ok := localMemory[key]
+				if !ok {
+					localMemory[key] = defaultValue
+					return localMemory[key]
+				}
+
+				return sessionItem
+			}
+
+			set = func(key string, value any) {
+				localMemory, localMemoryExists := memory[id]
+
+				if !localMemoryExists {
+					localMemory = map[string]any{}
+					memory[id] = localMemory
+				}
+
+				localMemory[key] = value
+			}
+
+			unset = func(key string) {
+				localMemory, localMemoryExists := memory[id]
+
+				if !localMemoryExists {
+					localMemory = map[string]any{}
+					memory[id] = localMemory
+				}
+
+				delete(memory, key)
+			}
+
+			destroy = func() {
+				localMemory, localMemoryExists := memory[id]
+
+				if !localMemoryExists {
+					localMemory = map[string]any{}
+					memory[id] = localMemory
+				}
+
+				delete(localMemory, id)
+			}
+			return
 		},
 	}
 }
@@ -892,8 +950,8 @@ func SendWebSocketUpgrade(self *Response, callback func(server *Server, request 
 	callback(self.server, request, self)
 }
 
-func serverSqlExecuteFetchFallback(dest ...any) bool { return false }
-func serverSqlExecuteDestroyFallback()               {}
+func serverSqlFindNextFallback(dest ...any) bool { return false }
+func severSqlFindCloseFallback()                 {}
 
 // ServerSqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
 func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
@@ -922,15 +980,20 @@ func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
 	return &result
 }
 
-// ServerSqlRows executes a sql query that returns rows, typically a SELECT query.
+// ServerSqlFind executes a sql query that returns rows, typically a SELECT query.
 //
-// Use fetch to project the current row's columns onto dest.
-// Fetch will also advance to the next row and return true, otherwise it returns false.
+// It returns a next function and a close function.
 //
-// Use unlock to unlock the database context.
-func ServerSqlRows(self *Server, query string, props ...any) (fetch func(dest ...any) bool, unlock func()) {
-	fetch = serverSqlExecuteFetchFallback
-	unlock = serverSqlExecuteDestroyFallback
+// Use next to project the next row onto dest.
+//
+// Next will return false if where are no more rows available.
+//
+// Use close to close the database context and prevent any subsequent enumerations.
+//
+// Whenever next returns false, the database context is closed automatically as if calling close.
+func ServerSqlFind(self *Server, query string, props ...any) (next func(dest ...any) bool, close func()) {
+	next = serverSqlFindNextFallback
+	close = severSqlFindCloseFallback
 
 	rows, queryError := self.database.Query(query, props...)
 	if queryError != nil {
@@ -938,7 +1001,7 @@ func ServerSqlRows(self *Server, query string, props ...any) (fetch func(dest ..
 		return
 	}
 
-	fetch = func(dest ...any) bool {
+	next = func(dest ...any) bool {
 		if !rows.Next() {
 			return false
 		}
@@ -949,7 +1012,7 @@ func ServerSqlRows(self *Server, query string, props ...any) (fetch func(dest ..
 		}
 		return true
 	}
-	unlock = func() {
+	close = func() {
 		err := rows.Close()
 		if err != nil {
 			ServerNotifyError(self, err)
@@ -1135,15 +1198,33 @@ func SendPage(
 	SendEcho(self, index)
 }
 
-// ServerWithSessionHandler sets the session handler.
-func ServerWithSessionHandler(
+// ServerWithSessionOperator sets the session operator,
+// which is a function that provides the four main
+// operations used by the server to manage any session,
+// get, set, unset and destroy.
+//
+// Get must retrieve data from the session store.
+//
+// Set must create a new property to the session store or update an existing one.
+//
+// Unset must remove a property from the session store.
+//
+// Destroy must destroy the whole session, store included.
+//
+// In this context, "store", is any type of data storage,
+// it could be a file written to disk, a database, Ram,
+// it doesn't matter.
+//
+// The only thing that matters is a consistent
+// implementation of the four operations.
+func ServerWithSessionOperator(
 	self *Server,
-	sessionHandler func(string) (
+	sessionOperator func(string) (
 		get func(key string, defaultValue any) (value any),
 		set func(key string, value any),
 		unset func(key string),
 		destroy func(),
 	),
 ) {
-	self.sessionHandler = sessionHandler
+	self.sessionOperator = sessionOperator
 }

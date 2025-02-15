@@ -65,7 +65,7 @@ func TestServerWithMaxHeaderBytes(test *testing.T) {
 	}
 }
 
-func TestServerWithErrorLogger(test *testing.T) {
+func TestServerWithLogger(test *testing.T) {
 	server := ServerCreate()
 	expected := log.Default()
 	ServerWithLogger(server, expected)
@@ -110,7 +110,7 @@ func TestServerWithEmbeddedFileSystem(test *testing.T) {
 	}
 }
 
-func TestServerSetTemporaryFile(test *testing.T) {
+func TestServerTemporaryFileSave(test *testing.T) {
 	server := ServerCreate()
 	expected := "content"
 	ServerWithTemporaryDirectory(server, ".temp")
@@ -129,7 +129,7 @@ func TestServerSetTemporaryFile(test *testing.T) {
 	}
 }
 
-func TestServerGetTemporaryFile(test *testing.T) {
+func TestServerTemporaryFile(test *testing.T) {
 	server := ServerCreate()
 	expected := "content"
 	ServerWithTemporaryDirectory(server, ".temp")
@@ -140,7 +140,7 @@ func TestServerGetTemporaryFile(test *testing.T) {
 	}
 }
 
-func TestServerHasTemporaryFile(test *testing.T) {
+func TestServerTemporaryFileExists(test *testing.T) {
 	server := ServerCreate()
 	ServerWithTemporaryDirectory(server, ".temp")
 	ServerTemporaryFileSave(server, "test", "test")
@@ -151,7 +151,7 @@ func TestServerHasTemporaryFile(test *testing.T) {
 	}
 }
 
-func TestServerClearTemporaryDirectory(test *testing.T) {
+func TestServerTemporaryDirectoryClear(test *testing.T) {
 	server := ServerCreate()
 	ServerWithTemporaryDirectory(server, ".temp")
 	ServerTemporaryFileSave(server, "test", "test")
@@ -163,9 +163,10 @@ func TestServerClearTemporaryDirectory(test *testing.T) {
 	}
 }
 
-func TestServerOnRequest(test *testing.T) {
+func TestServerWithRoute(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8081)
+	port := NextNumber(8080)
+	ServerWithPort(server, port)
 	expected := "hello"
 	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendEcho(response, expected)
@@ -178,7 +179,7 @@ func TestServerOnRequest(test *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	actual, getError := HttpGet("http://127.0.0.1:8081/", nil)
+	actual, getError := HttpGet(fmt.Sprintf("http://127.0.0.1:%d/", port), nil)
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -188,7 +189,7 @@ func TestServerOnRequest(test *testing.T) {
 	}
 }
 
-func TestServerOnError(test *testing.T) {
+func TestServerWithErrorReceiver(test *testing.T) {
 	actual := ""
 	expected := "hello\nworld\n"
 	server := ServerCreate()
@@ -203,14 +204,17 @@ func TestServerOnError(test *testing.T) {
 	}
 }
 
-func TestStatus(test *testing.T) {
-	server := ServerCreate()
-	ServerWithPort(server, 8082)
+func TestSendStatus(test *testing.T) {
 	expected := 201
-	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
-		SendStatus(response, expected)
-		SendEcho(response, "Ok")
-	})
+	server := ServerCreate()
+	port := NextNumber(8080)
+	ServerWithPort(server, port)
+	ServerWithRoute(server, "GET /",
+		func(server *Server, request *Request, response *Response) {
+			SendStatus(response, expected)
+			SendEcho(response, "Ok")
+		},
+	)
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
@@ -219,7 +223,7 @@ func TestStatus(test *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	response, getError := http.Get("http://127.0.0.1:8082/")
+	response, getError := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", port))
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -232,9 +236,10 @@ func TestStatus(test *testing.T) {
 	}
 }
 
-func TestHeader(test *testing.T) {
+func TestSendHeader(test *testing.T) {
 	server := ServerCreate()
-	ServerWithPort(server, 8083)
+	port := NextNumber(8080)
+	ServerWithPort(server, port)
 	expected := "application/json"
 	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
 		SendHeader(response, "Content-Type", expected)
@@ -248,7 +253,7 @@ func TestHeader(test *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	response, getError := http.Get("http://127.0.0.1:8083/")
+	response, getError := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", port))
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -260,24 +265,3 @@ func TestHeader(test *testing.T) {
 		test.Fatalf("server was expected to respond with header content type '%s', received '%s' intead", expected, actual)
 	}
 }
-
-//func TestSend(test *testing.T) {
-//}
-//
-//func TestEcho(test *testing.T) {
-//}
-//
-//func TestAccept(test *testing.T) {
-//}
-//
-//func TestEmbeddedFileOrElse(test *testing.T) {
-//}
-//
-//func TestEmbeddedFileOrIndexElse(test *testing.T) {
-//}
-//
-//func TestFileOrIndexElse(test *testing.T) {
-//}
-//
-//func TestFileOrElse(test *testing.T) {
-//}

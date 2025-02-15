@@ -12,9 +12,17 @@ type Session struct {
 	destroy func()
 }
 
-// SessionStart starts a new session or retrieves it if it's already been started.
+// SessionStart first tries to retrieve the client session, then,
+// if the client is not associated with any existing session,
+// it will automatically create a new empty session for said client.
 //
-// SessionStart always returns two functions, a get() and a set(), which you can use to manage the session.
+// It always returns three functions, get, set and unset.
+//
+// Use get to retrieve a property from the session.
+//
+// Use set to create a new property or update an existing one to the session.
+//
+// Use unset to remove a property from the session.
 func SessionStart(request *Request, response *Response) (
 	get func(key string, defaultValue any) (value any),
 	set func(key string, value any),
@@ -30,7 +38,7 @@ func SessionStart(request *Request, response *Response) (
 
 		sessionId := uuidV4.String()
 
-		sessionGet, sessionSet, sessionUnset, sessionDestroy := request.server.sessionHandler(sessionId)
+		sessionGet, sessionSet, sessionUnset, sessionDestroy := request.server.sessionOperator(sessionId)
 
 		freshSession := &Session{
 			id:      sessionId,
@@ -54,7 +62,7 @@ func SessionStart(request *Request, response *Response) (
 			ServerNotifyError(request.server, sessionIdError)
 		}
 		sessionId := uuidV4.String()
-		sessionGet, sessionSet, sessionUnset, sessionDestroy := request.server.sessionHandler(sessionId)
+		sessionGet, sessionSet, sessionUnset, sessionDestroy := request.server.sessionOperator(sessionId)
 
 		freshSession := &Session{
 			id:      sessionId,
