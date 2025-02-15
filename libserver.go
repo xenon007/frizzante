@@ -697,7 +697,7 @@ func SendRedirectToSecure(self *Response, statusCode int) bool {
 // so that the next time you invoke this
 // function it will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerWithErrorReceiver.
 func SendStatus(self *Response, code int) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("status is locked"))
@@ -712,7 +712,7 @@ func SendStatus(self *Response, code int) {
 //
 // This means the status will become locked and further attempts to send the status will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorReceiver
+// You can retrieve the error using ServerWithErrorReceiver
 func SendHeader(self *Response, key string, value string) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("headers locked"))
@@ -733,7 +733,7 @@ func SendCookie(self *Response, key string, value string) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerWithErrorReceiver.
 //
 // Compatible with web sockets.
 func SendContent(self *Response, content []byte) {
@@ -763,7 +763,7 @@ func SendContent(self *Response, content []byte) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerWithErrorReceiver.
 //
 // Compatible with web sockets.
 func SendEcho(self *Response, content string) {
@@ -776,7 +776,7 @@ func SendEcho(self *Response, content string) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve this error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerWithErrorReceiver.
 //
 // Compatible with web sockets.
 func SendJson(self *Response, payload any) {
