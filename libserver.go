@@ -784,6 +784,14 @@ func SendJson(self *Response, payload any) {
 	if marshalError != nil {
 		ServerNotifyError(self.server, marshalError)
 	}
+
+	if nil == self.webSocket {
+		contentType := self.header.Get("Content-Type")
+		if "" == contentType {
+			self.header.Set("Content-Type", "application/json")
+		}
+	}
+
 	SendContent(self, content)
 }
 
