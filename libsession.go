@@ -5,11 +5,12 @@ import uuid "github.com/nu7hatch/gouuid"
 var sessions = map[string]*Session{}
 
 type Session struct {
-	id      string
-	get     func(key string, defaultValue any) (value any)
-	set     func(key string, value any)
-	unset   func(key string)
-	destroy func()
+	id       string
+	get      func(key string, defaultValue any) (value any)
+	set      func(key string, value any)
+	unset    func(key string)
+	validate func() (valid bool)
+	destroy  func()
 }
 
 // SessionStart first tries to retrieve the client session, then,
@@ -37,21 +38,26 @@ func SessionStart(request *Request, response *Response) (
 		}
 
 		sessionId := uuidV4.String()
-
-		sessionGet, sessionSet, sessionUnset, sessionDestroy := request.server.sessionOperator(sessionId)
+		sessionGet,
+			sessionSet,
+			sessionUnset,
+			sessionValidate,
+			sessionDestroy := request.server.sessionOperator(sessionId)
 
 		freshSession := &Session{
-			id:      sessionId,
-			get:     sessionGet,
-			set:     sessionSet,
-			unset:   sessionUnset,
-			destroy: sessionDestroy,
+			id:       sessionId,
+			get:      sessionGet,
+			set:      sessionSet,
+			unset:    sessionUnset,
+			validate: sessionValidate,
+			destroy:  sessionDestroy,
 		}
 
 		SendCookie(response, "session-id", freshSession.id)
 		sessions[freshSession.id] = freshSession
 		get = sessionGet
 		set = sessionSet
+		unset = sessionUnset
 		return
 	}
 
@@ -62,20 +68,33 @@ func SessionStart(request *Request, response *Response) (
 			ServerNotifyError(request.server, sessionIdError)
 		}
 		sessionId := uuidV4.String()
-		sessionGet, sessionSet, sessionUnset, sessionDestroy := request.server.sessionOperator(sessionId)
+		sessionGet,
+			sessionSet,
+			sessionUnset,
+			sessionValidate,
+			sessionDestroy := request.server.sessionOperator(sessionId)
 
 		freshSession := &Session{
-			id:      sessionId,
-			get:     sessionGet,
-			set:     sessionSet,
-			unset:   sessionUnset,
-			destroy: sessionDestroy,
+			id:       sessionId,
+			get:      sessionGet,
+			set:      sessionSet,
+			unset:    sessionUnset,
+			validate: sessionValidate,
+			destroy:  sessionDestroy,
 		}
 
 		SendCookie(response, "session-id", freshSession.id)
 		sessions[freshSession.id] = freshSession
 		get = sessionGet
 		set = sessionSet
+		unset = sessionUnset
+		return
+	}
+
+	if !session.validate() {
+		delete(sessions, sessionIdCookie.Value)
+		session.destroy()
+		SessionStart(request, response)
 		return
 	}
 

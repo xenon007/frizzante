@@ -11,12 +11,12 @@ import (
 type RenderMode int64
 
 const (
-	ModeServer RenderMode = 0 // render only on the server.
-	ModeClient RenderMode = 1 // render only on the client.
-	ModeFull   RenderMode = 2 // render on both the server and the client.
+	ModeServer RenderMode = 0 // Render only on the server.
+	ModeClient RenderMode = 1 // Render only on the client.
+	ModeFull   RenderMode = 2 // Render on both the server and the client.
 )
 
-func render(response *Response, stringProps string, globals map[string]v8go.FunctionCallback) (string, string, error) {
+func render(response *Response, stringProps string) (string, string, error) {
 	renderFileName := filepath.Join(".dist", "server", "render.server.js")
 
 	var renderEsmBytes []byte
@@ -62,7 +62,7 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 
 	head := ""
 	body := ""
-	allGlobals := map[string]v8go.FunctionCallback{
+	globals := map[string]v8go.FunctionCallback{
 		"inspect": func(info *v8go.FunctionCallbackInfo) *v8go.Value {
 			args := info.Args()
 			if len(args) > 0 {
@@ -87,16 +87,7 @@ func render(response *Response, stringProps string, globals map[string]v8go.Func
 		},
 	}
 
-	for key, value := range globals {
-		_, exists := globals[key]
-		if exists {
-			continue
-		}
-
-		allGlobals[key] = value
-	}
-
-	_, destroy, javaScriptError := JavaScriptRun(doneCjs, allGlobals)
+	_, destroy, javaScriptError := JavaScriptRun(doneCjs, globals)
 	if javaScriptError != nil {
 		return head, body, javaScriptError
 	}

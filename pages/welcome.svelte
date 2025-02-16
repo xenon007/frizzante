@@ -1,5 +1,5 @@
 <script>
-    import Layout from '../lib/components/layout.svelte'
+    import Layout from '$lib/components/layout.svelte'
     import {getContext} from "svelte";
     const data = getContext("data")
 </script>

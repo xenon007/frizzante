@@ -2,7 +2,6 @@ package frizzante
 
 import (
 	"fmt"
-	"rogchap.com/v8go"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +23,6 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 				data: map[string]any{
 					"name": "world",
 				},
-				globals: map[string]v8go.FunctionCallback{},
 			},
 			)
 		})
@@ -60,7 +58,6 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 				data: map[string]any{
 					"name": "world",
 				},
-				globals: map[string]v8go.FunctionCallback{},
 			},
 			)
 		})

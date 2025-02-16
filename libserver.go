@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"rogchap.com/v8go"
 	"strings"
 	"sync"
 	"time"
@@ -49,13 +48,20 @@ type Server struct {
 		get func(key string, defaultValue any) (value any),
 		set func(key string, value any),
 		unset func(key string),
+		validate func() (valid bool),
 		destroy func(),
 	)
 }
 
+type sessionStore struct {
+	createdAt time.Time
+	data      map[string]any
+}
+
 // ServerCreate creates a server.
 func ServerCreate() *Server {
-	var memory = map[string]map[string]any{}
+	var memory = map[string]sessionStore{}
+
 	return &Server{
 		hostName:           "127.0.0.1",
 		port:               8081,
@@ -79,56 +85,46 @@ func ServerCreate() *Server {
 			get func(key string, defaultValue any) (value any),
 			set func(key string, value any),
 			unset func(key string),
+			validate func() (valid bool),
 			destroy func(),
 		) {
+			store, exists := memory[id]
+			if !exists {
+				store = sessionStore{
+					data:      map[string]any{},
+					createdAt: time.Now(),
+				}
+				memory[id] = store
+			}
+
 			get = func(key string, defaultValue any) (value any) {
-				localMemory, localMemoryExists := memory[id]
-
-				if !localMemoryExists {
-					localMemory = map[string]any{}
-					memory[id] = localMemory
-				}
-
-				sessionItem, ok := localMemory[key]
+				sessionItem, ok := store.data[key]
 				if !ok {
-					localMemory[key] = defaultValue
-					return localMemory[key]
+					store.data[key] = defaultValue
+					value = store.data[key]
+					return
 				}
 
-				return sessionItem
+				value = sessionItem
+				return
 			}
 
 			set = func(key string, value any) {
-				localMemory, localMemoryExists := memory[id]
-
-				if !localMemoryExists {
-					localMemory = map[string]any{}
-					memory[id] = localMemory
-				}
-
-				localMemory[key] = value
+				store.data[key] = value
 			}
 
 			unset = func(key string) {
-				localMemory, localMemoryExists := memory[id]
+				delete(store.data, key)
+			}
 
-				if !localMemoryExists {
-					localMemory = map[string]any{}
-					memory[id] = localMemory
-				}
-
-				delete(memory, key)
+			validate = func() (valid bool) {
+				elapsedSeconds := time.Since(store.createdAt).Minutes()
+				valid = elapsedSeconds < 30
+				return
 			}
 
 			destroy = func() {
-				localMemory, localMemoryExists := memory[id]
-
-				if !localMemoryExists {
-					localMemory = map[string]any{}
-					memory[id] = localMemory
-				}
-
-				delete(localMemory, id)
+				delete(memory, id)
 			}
 			return
 		},
@@ -507,10 +503,12 @@ func ServerStop(self *Server) {
 
 var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
+// PageWithData sets the contextual data to pass to the page.
 func PageWithData(page *Page, key string, value any) {
 	page.data[key] = value
 }
 
+// PageWithRenderMode sets the rendering mode for the page.
 func PageWithRenderMode(page *Page, render RenderMode) {
 	page.render = render
 }
@@ -543,10 +541,6 @@ func ServerWithPage(
 		if nil == page {
 			ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
 			return
-		}
-
-		if nil == page.globals {
-			page.globals = map[string]v8go.FunctionCallback{}
 		}
 
 		if nil == page.data {
@@ -1075,9 +1069,8 @@ type svelteRouterProps struct {
 }
 
 type Page struct {
-	render  RenderMode
-	data    map[string]any
-	globals map[string]v8go.FunctionCallback
+	render RenderMode
+	data   map[string]any
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
@@ -1091,9 +1084,8 @@ func SendPage(
 ) {
 	if nil == configuration {
 		configuration = &Page{
-			render:  ModeFull,
-			data:    map[string]any{},
-			globals: map[string]v8go.FunctionCallback{},
+			render: ModeFull,
+			data:   map[string]any{},
 		}
 	}
 
@@ -1137,7 +1129,7 @@ func SendPage(
 
 	var index string
 	if ModeFull == configuration.render {
-		head, body, renderError := render(self, routerPropsString, configuration.globals)
+		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
 			return
@@ -1192,7 +1184,7 @@ func SendPage(
 			1,
 		)
 	} else if ModeServer == configuration.render {
-		head, body, renderError := render(self, routerPropsString, configuration.globals)
+		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
 			return
@@ -1249,6 +1241,7 @@ func ServerWithSessionOperator(
 		get func(key string, defaultValue any) (value any),
 		set func(key string, value any),
 		unset func(key string),
+		validate func() (valid bool),
 		destroy func(),
 	),
 ) {
