@@ -54,8 +54,9 @@ type Server struct {
 }
 
 type sessionStore struct {
-	createdAt time.Time
-	data      map[string]any
+	createdAt      time.Time
+	lastActivityAt time.Time
+	data           map[string]any
 }
 
 // ServerCreate creates a server.
@@ -91,8 +92,9 @@ func ServerCreate() *Server {
 			store, exists := memory[id]
 			if !exists {
 				store = sessionStore{
-					data:      map[string]any{},
-					createdAt: time.Now(),
+					data:           map[string]any{},
+					createdAt:      time.Now(),
+					lastActivityAt: time.Now(),
 				}
 				memory[id] = store
 			}
@@ -118,7 +120,7 @@ func ServerCreate() *Server {
 			}
 
 			validate = func() (valid bool) {
-				elapsedSeconds := time.Since(store.createdAt).Minutes()
+				elapsedSeconds := time.Since(store.lastActivityAt).Minutes()
 				valid = elapsedSeconds < 30
 				return
 			}
