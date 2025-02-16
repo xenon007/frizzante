@@ -104,18 +104,22 @@ func ServerCreate() *Server {
 				if !ok {
 					store.data[key] = defaultValue
 					value = store.data[key]
+					store.lastActivityAt = time.Now()
 					return
 				}
 
+				store.lastActivityAt = time.Now()
 				value = sessionItem
 				return
 			}
 
 			set = func(key string, value any) {
+				store.lastActivityAt = time.Now()
 				store.data[key] = value
 			}
 
 			unset = func(key string) {
+				store.lastActivityAt = time.Now()
 				delete(store.data, key)
 			}
 
