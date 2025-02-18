@@ -208,7 +208,7 @@ func ServerWithTemporaryDirectory(self *Server, temporaryDirectory string) {
 // ServerWithEmbeddedFileSystem sets the embedded file system.
 //
 // The embedded file system should contain at least directory ".dist" so
-// that the server can properly render and serve svelte components.
+// that the server can properly Render and serve svelte components.
 func ServerWithEmbeddedFileSystem(self *Server, embeddedFileSystem embed.FS) {
 	self.embeddedFileSystem = embeddedFileSystem
 }
@@ -456,9 +456,9 @@ func ServerStart(self *Server) {
 
 	if !entryCreated {
 		ServerWithRoute(self, "GET /",
-			func(server *Server, request *Request, response *Response) {
+			Route(func(server *Server, request *Request, response *Response) {
 				SendStatus(response, 404)
-			},
+			}),
 		)
 	}
 
@@ -509,86 +509,108 @@ func ServerStop(self *Server) {
 
 var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
-// PageWithData sets the contextual data to pass to the page.
-func PageWithData(page *Page, key string, value any) {
-	page.data[key] = value
+type RouteConfiguration struct {
+	server   *Server
+	isPage   bool
+	pageId   string
+	callback func(server *Server, request *Request, response *Response)
+	mount    func(pattern string)
 }
 
-// PageWithRenderMode sets the rendering mode for the page.
-func PageWithRenderMode(page *Page, render RenderMode) {
-	page.render = render
+// Route creates a route configuration from a callback function.
+func Route(
+	callback func(server *Server, request *Request, response *Response),
+) *RouteConfiguration {
+	return &RouteConfiguration{
+		isPage:   false,
+		pageId:   "",
+		callback: callback,
+		mount:    func(pattern string) {},
+	}
 }
 
-// ServerWithPage registers a callback for the given pattern and maps a svelte page to it.
-func ServerWithPage(
-	self *Server,
-	pattern string,
+// Page creates a route configuration from a callback function, just like Route.
+//
+// Unlike Route, Page also creates a PageConfiguration, which is used to automatically
+// to serve a svelte page after invoking callback.
+//
+// Generally speaking, you should never manually invoke SendEcho or similar functions.
+//
+// However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
+func Page(
 	pageId string,
-	callback func(*Server, *Request, *Response, *Page),
-) {
+	callback func(server *Server, request *Request, response *Response, page *PageConfiguration),
+) *RouteConfiguration {
+	var pattern string
 	if strings.HasSuffix(pageId, ".svelte") {
 		pageId = strings.TrimSuffix(pageId, ".svelte")
 	}
 
-	patternParts := strings.Split(pattern, " ")
-	patternCounter := len(patternParts)
-	if patternCounter > 1 {
-		pagesToPaths[pageId] = path.Join(patternParts[1:]...)
-	}
-
-	ServerWithRoute(self, pattern, func(server *Server, request *Request, response *Response) {
-		page := &Page{
-			render: ModeFull,
-			data:   map[string]interface{}{},
-		}
-
-		callback(server, request, response, page)
-
-		if nil == page {
-			ServerNotifyError(self, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
-			return
-		}
-
-		if nil == page.data {
-			page.data = map[string]any{}
-		}
-
-		parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
-		if parseMultipartFormError != nil {
-			if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
-				ServerNotifyError(server, parseMultipartFormError)
+	return &RouteConfiguration{
+		isPage: true,
+		pageId: pageId,
+		callback: func(server *Server, request *Request, response *Response) {
+			page := &PageConfiguration{
+				Render: ModeFull,
+				Data:   map[string]interface{}{},
 			}
 
-			parseFormError := request.HttpRequest.ParseForm()
-			if parseFormError != nil {
-				ServerNotifyError(server, parseFormError)
-			}
-		}
+			callback(server, request, response, page)
 
-		pathEntry := map[string]string{}
-		for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
-			if len(name) < 1 {
-				continue
-			}
-			pathEntry[name[1]] = request.HttpRequest.PathValue(name[1])
-		}
-		page.data["path"] = pathEntry
-		page.data["query"] = request.HttpRequest.URL.Query()
-		page.data["form"] = request.HttpRequest.Form
-
-		if VerifyAccept(request, "application/json") {
-			data, marshalError := json.Marshal(page.data)
-			if marshalError != nil {
-				ServerNotifyError(server, marshalError)
+			if nil == page {
+				ServerNotifyError(server, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
 				return
 			}
-			SendHeader(response, "Content-Type", "application/json")
-			SendEcho(response, string(data))
-			return
-		}
 
-		SendPage(response, pageId, page)
-	})
+			if nil == page.Data {
+				page.Data = map[string]any{}
+			}
+
+			parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
+			if parseMultipartFormError != nil {
+				if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
+					ServerNotifyError(server, parseMultipartFormError)
+				}
+
+				parseFormError := request.HttpRequest.ParseForm()
+				if parseFormError != nil {
+					ServerNotifyError(server, parseFormError)
+				}
+			}
+
+			pathEntry := map[string]string{}
+			for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
+				if len(name) < 1 {
+					continue
+				}
+				pathEntry[name[1]] = request.HttpRequest.PathValue(name[1])
+			}
+			page.Data["path"] = pathEntry
+			page.Data["query"] = request.HttpRequest.URL.Query()
+			page.Data["form"] = request.HttpRequest.Form
+
+			if VerifyAccept(request, "application/json") {
+				data, marshalError := json.Marshal(page.Data)
+				if marshalError != nil {
+					ServerNotifyError(server, marshalError)
+					return
+				}
+				SendHeader(response, "Content-Type", "application/json")
+				SendEcho(response, string(data))
+				return
+			}
+
+			SendPage(response, pageId, page)
+		},
+		mount: func(patternLocal string) {
+			pattern = patternLocal
+			patternParts := strings.Split(patternLocal, " ")
+			patternCounter := len(patternParts)
+			if patternCounter > 1 {
+				pagesToPaths[pageId] = path.Join(patternParts[1:]...)
+			}
+		},
+	}
 }
 
 var entryCreated = false
@@ -599,7 +621,7 @@ var entryCreated = false
 func ServerWithRoute(
 	self *Server,
 	pattern string,
-	callback func(server *Server, request *Request, response *Response),
+	route *RouteConfiguration,
 ) {
 	patternParts := strings.Split(pattern, " ")
 	patternCounter := len(patternParts)
@@ -607,6 +629,10 @@ func ServerWithRoute(
 
 	if isEntry && !entryCreated {
 		entryCreated = true
+	}
+
+	if route.mount != nil {
+		route.mount(pattern)
 	}
 
 	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, httpRequest *http.Request) {
@@ -631,11 +657,13 @@ func ServerWithRoute(
 		if isEntry {
 			SendEmbeddedFileOrElse(&response, func() {
 				SendFileOrElse(&response, func() {
-					callback(self, &request, &response)
+					if route.callback != nil {
+						route.callback(self, &request, &response)
+					}
 				})
 			})
-		} else {
-			callback(self, &request, &response)
+		} else if route.callback != nil {
+			route.callback(self, &request, &response)
 		}
 	})
 }
@@ -1074,9 +1102,9 @@ type svelteRouterProps struct {
 	Paths  map[string]string `json:"paths"`
 }
 
-type Page struct {
-	render RenderMode
-	data   map[string]any
+type PageConfiguration struct {
+	Render RenderMode
+	Data   map[string]any
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
@@ -1086,12 +1114,12 @@ var pagesToPaths = map[string]string{}
 func SendPage(
 	self *Response,
 	pageId string,
-	configuration *Page,
+	configuration *PageConfiguration,
 ) {
 	if nil == configuration {
-		configuration = &Page{
-			render: ModeFull,
-			data:   map[string]any{},
+		configuration = &PageConfiguration{
+			Render: ModeFull,
+			Data:   map[string]any{},
 		}
 	}
 
@@ -1117,7 +1145,7 @@ func SendPage(
 
 	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
 		PageId: pageId,
-		Data:   configuration.data,
+		Data:   configuration.Data,
 		Paths:  pagesToPaths,
 	})
 
@@ -1134,7 +1162,7 @@ func SendPage(
 	}
 
 	var index string
-	if ModeFull == configuration.render {
+	if ModeFull == configuration.Render {
 		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
@@ -1164,7 +1192,7 @@ func SendPage(
 			),
 			1,
 		)
-	} else if ModeClient == configuration.render {
+	} else if ModeClient == configuration.Render {
 		index = strings.Replace(
 			strings.Replace(
 				strings.Replace(
@@ -1189,7 +1217,7 @@ func SendPage(
 			),
 			1,
 		)
-	} else if ModeServer == configuration.render {
+	} else if ModeServer == configuration.Render {
 		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)

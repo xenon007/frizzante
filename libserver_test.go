@@ -168,9 +168,9 @@ func TestServerWithRoute(test *testing.T) {
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	expected := "hello"
-	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRoute(server, "GET /", Route(func(server *Server, request *Request, response *Response) {
 		SendEcho(response, expected)
-	})
+	}))
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})
@@ -210,10 +210,10 @@ func TestSendStatus(test *testing.T) {
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	ServerWithRoute(server, "GET /",
-		func(server *Server, request *Request, response *Response) {
+		Route(func(server *Server, request *Request, response *Response) {
 			SendStatus(response, expected)
 			SendEcho(response, "Ok")
-		},
+		}),
 	)
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
@@ -241,10 +241,10 @@ func TestSendHeader(test *testing.T) {
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	expected := "application/json"
-	ServerWithRoute(server, "GET /", func(server *Server, request *Request, response *Response) {
+	ServerWithRoute(server, "GET /", Route(func(server *Server, request *Request, response *Response) {
 		SendHeader(response, "Content-Type", expected)
 		SendEcho(response, "{}")
-	})
+	}))
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)
 	})

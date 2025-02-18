@@ -17,15 +17,16 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 		test.Fatal(err)
 	})
 	ServerWithRoute(server, "GET /",
-		func(server *Server, request *Request, response *Response) {
-			SendPage(response, "welcome", &Page{
-				render: ModeServer,
-				data: map[string]any{
+		Route(func(server *Server, request *Request, response *Response) {
+			SendPage(response, "welcome", &PageConfiguration{
+				Render: ModeServer,
+				Data: map[string]any{
 					"name": "world",
 				},
 			},
 			)
-		})
+		}),
+	)
 	go ServerStart(server)
 	time.Sleep(1 * time.Second)
 
@@ -52,15 +53,16 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 		test.Fatal(err)
 	})
 	ServerWithRoute(server, "GET /",
-		func(server *Server, request *Request, response *Response) {
-			SendPage(response, "welcome", &Page{
-				render: ModeClient,
-				data: map[string]any{
+		Route(func(server *Server, request *Request, response *Response) {
+			SendPage(response, "welcome", &PageConfiguration{
+				Render: ModeClient,
+				Data: map[string]any{
 					"name": "world",
 				},
 			},
 			)
-		})
+		}),
+	)
 	go ServerStart(server)
 	time.Sleep(1 * time.Second)
 

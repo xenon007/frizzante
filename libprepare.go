@@ -115,7 +115,7 @@ func prepareClientLoader() error {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("import Page from './page.async.svelte'")
+	builder.WriteString("import PageConfiguration from './page.async.svelte'")
 	renderClientSvelteString := strings.Replace(string(renderClientSvelte), "<!--app-imports-->", builder.String(), 1)
 
 	builder.Reset()
@@ -126,7 +126,7 @@ func prepareClientLoader() error {
 		} else {
 			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", pageId))
 		}
-		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
+		builder.WriteString(fmt.Sprintf("    <PageConfiguration from={import('%s')} />\n", fileName))
 		counter++
 	}
 	if counter > 0 {
