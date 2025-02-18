@@ -12,20 +12,20 @@ func TestSessionStart(test *testing.T) {
 	server := ServerCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
-	ServerWithRoute(server, "GET /",
-		Route(func(s *Server, request *Request, response *Response) {
+	ServerWithApi(server, "GET /",
+		func(s *Server, request *Request, response *Response) {
 			get, _, _ := SessionStart(request, response)
 			name := get("name", "world").(string)
 			SendEcho(response, fmt.Sprintf("hello %s", name))
-		}),
+		},
 	)
-	ServerWithRoute(server, "POST /",
-		Route(func(s *Server, request *Request, response *Response) {
+	ServerWithApi(server, "POST /",
+		func(s *Server, request *Request, response *Response) {
 			_, set, _ := SessionStart(request, response)
 			name := ReceiveMessage(request)
 			set("name", name)
 			SendEcho(response, "")
-		}),
+		},
 	)
 	ServerWithErrorReceiver(server, func(err error) {
 		test.Fatal(err)

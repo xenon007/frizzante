@@ -11,9 +11,9 @@ import (
 type RenderMode int64
 
 const (
-	ModeServer RenderMode = 0 // Render only on the server.
-	ModeClient RenderMode = 1 // Render only on the client.
-	ModeFull   RenderMode = 2 // Render on both the server and the client.
+	RenderModeServer RenderMode = 0 // renderMode only on the server.
+	RenderModeClient RenderMode = 1 // renderMode only on the client.
+	RenderModeFull   RenderMode = 2 // renderMode on both the server and the client.
 )
 
 func render(response *Response, stringProps string) (string, string, error) {

@@ -208,7 +208,7 @@ func ServerWithTemporaryDirectory(self *Server, temporaryDirectory string) {
 // ServerWithEmbeddedFileSystem sets the embedded file system.
 //
 // The embedded file system should contain at least directory ".dist" so
-// that the server can properly Render and serve svelte components.
+// that the server can properly render and serve svelte components.
 func ServerWithEmbeddedFileSystem(self *Server, embeddedFileSystem embed.FS) {
 	self.embeddedFileSystem = embeddedFileSystem
 }
@@ -455,10 +455,10 @@ func ServerStart(self *Server) {
 	}
 
 	if !entryCreated {
-		ServerWithRoute(self, "GET /",
-			Route(func(server *Server, request *Request, response *Response) {
+		ServerWithApi(self, "GET /",
+			func(server *Server, request *Request, response *Response) {
 				SendStatus(response, 404)
-			}),
+			},
 		)
 	}
 
@@ -509,7 +509,7 @@ func ServerStop(self *Server) {
 
 var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 
-type RouteConfiguration struct {
+type Route struct {
 	server   *Server
 	isPage   bool
 	pageId   string
@@ -517,11 +517,11 @@ type RouteConfiguration struct {
 	mount    func(pattern string)
 }
 
-// Route creates a route configuration from a callback function.
-func Route(
+// routeCreate creates a route configuration from a callback function.
+func routeCreate(
 	callback func(server *Server, request *Request, response *Response),
-) *RouteConfiguration {
-	return &RouteConfiguration{
+) *Route {
+	return &Route{
 		isPage:   false,
 		pageId:   "",
 		callback: callback,
@@ -529,30 +529,30 @@ func Route(
 	}
 }
 
-// Page creates a route configuration from a callback function, just like Route.
+// pageRouteCreate creates a route configuration from a callback function, just like routeCreate.
 //
-// Unlike Route, Page also creates a PageConfiguration, which is used to automatically
+// Unlike routeCreate, pageRouteCreate also creates a Page, which is used to automatically
 // to serve a svelte page after invoking callback.
 //
 // Generally speaking, you should never manually invoke SendEcho or similar functions.
 //
 // However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
-func Page(
+func pageRouteCreate(
 	pageId string,
-	callback func(server *Server, request *Request, response *Response, page *PageConfiguration),
-) *RouteConfiguration {
+	callback func(server *Server, request *Request, response *Response, page *Page),
+) *Route {
 	var pattern string
 	if strings.HasSuffix(pageId, ".svelte") {
 		pageId = strings.TrimSuffix(pageId, ".svelte")
 	}
 
-	return &RouteConfiguration{
+	return &Route{
 		isPage: true,
 		pageId: pageId,
 		callback: func(server *Server, request *Request, response *Response) {
-			page := &PageConfiguration{
-				Render: ModeFull,
-				Data:   map[string]interface{}{},
+			page := &Page{
+				renderMode: RenderModeFull,
+				data:       map[string]interface{}{},
 			}
 
 			callback(server, request, response, page)
@@ -562,8 +562,8 @@ func Page(
 				return
 			}
 
-			if nil == page.Data {
-				page.Data = map[string]any{}
+			if nil == page.data {
+				page.data = map[string]any{}
 			}
 
 			parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
@@ -585,12 +585,12 @@ func Page(
 				}
 				pathEntry[name[1]] = request.HttpRequest.PathValue(name[1])
 			}
-			page.Data["path"] = pathEntry
-			page.Data["query"] = request.HttpRequest.URL.Query()
-			page.Data["form"] = request.HttpRequest.Form
+			page.data["path"] = pathEntry
+			page.data["query"] = request.HttpRequest.URL.Query()
+			page.data["form"] = request.HttpRequest.Form
 
 			if VerifyAccept(request, "application/json") {
-				data, marshalError := json.Marshal(page.Data)
+				data, marshalError := json.Marshal(page.data)
 				if marshalError != nil {
 					ServerNotifyError(server, marshalError)
 					return
@@ -615,13 +615,13 @@ func Page(
 
 var entryCreated = false
 
-// ServerWithRoute registers a callback for the given pattern.
+// serverWithRoute registers a callback for the given pattern.
 //
-// If the given pattern conflicts with one that is already registered, ServerWithRoute panics.
-func ServerWithRoute(
+// If the given pattern conflicts with one that is already registered, serverWithRoute panics.
+func serverWithRoute(
 	self *Server,
 	pattern string,
-	route *RouteConfiguration,
+	route *Route,
 ) {
 	patternParts := strings.Split(pattern, " ")
 	patternCounter := len(patternParts)
@@ -1102,9 +1102,17 @@ type svelteRouterProps struct {
 	Paths  map[string]string `json:"paths"`
 }
 
-type PageConfiguration struct {
-	Render RenderMode
-	Data   map[string]any
+type Page struct {
+	renderMode RenderMode
+	data       map[string]any
+}
+
+func PageWithRenderMode(self *Page, renderMode RenderMode) {
+	self.renderMode = renderMode
+}
+
+func PageWithData(self *Page, key string, value any) {
+	self.data[key] = value
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
@@ -1114,12 +1122,12 @@ var pagesToPaths = map[string]string{}
 func SendPage(
 	self *Response,
 	pageId string,
-	configuration *PageConfiguration,
+	configuration *Page,
 ) {
 	if nil == configuration {
-		configuration = &PageConfiguration{
-			Render: ModeFull,
-			Data:   map[string]any{},
+		configuration = &Page{
+			renderMode: RenderModeFull,
+			data:       map[string]any{},
 		}
 	}
 
@@ -1145,7 +1153,7 @@ func SendPage(
 
 	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
 		PageId: pageId,
-		Data:   configuration.Data,
+		Data:   configuration.data,
 		Paths:  pagesToPaths,
 	})
 
@@ -1162,7 +1170,7 @@ func SendPage(
 	}
 
 	var index string
-	if ModeFull == configuration.Render {
+	if RenderModeFull == configuration.renderMode {
 		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
@@ -1192,7 +1200,7 @@ func SendPage(
 			),
 			1,
 		)
-	} else if ModeClient == configuration.Render {
+	} else if RenderModeClient == configuration.renderMode {
 		index = strings.Replace(
 			strings.Replace(
 				strings.Replace(
@@ -1217,7 +1225,7 @@ func SendPage(
 			),
 			1,
 		)
-	} else if ModeServer == configuration.Render {
+	} else if RenderModeServer == configuration.renderMode {
 		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
@@ -1280,4 +1288,30 @@ func ServerWithSessionOperator(
 	),
 ) {
 	self.sessionOperator = sessionOperator
+}
+
+// ServerWithApi maps an api route.
+func ServerWithApi(self *Server,
+	pattern string,
+	callback func(
+		server *Server,
+		request *Request,
+		response *Response,
+	),
+) {
+	serverWithRoute(self, pattern, routeCreate(callback))
+}
+
+// ServerWithPage maps a page route.
+func ServerWithPage(self *Server,
+	pattern string,
+	pageId string,
+	callback func(
+		server *Server,
+		request *Request,
+		response *Response,
+		page *Page,
+	),
+) {
+	serverWithRoute(self, pattern, pageRouteCreate(pageId, callback))
 }
