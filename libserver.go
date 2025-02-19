@@ -1105,6 +1105,7 @@ type svelteRouterProps struct {
 type Page struct {
 	renderMode RenderMode
 	data       map[string]any
+	headless   bool
 }
 
 func PageWithRenderMode(self *Page, renderMode RenderMode) {
@@ -1122,12 +1123,13 @@ var pagesToPaths = map[string]string{}
 func SendPage(
 	self *Response,
 	pageId string,
-	configuration *Page,
+	page *Page,
 ) {
-	if nil == configuration {
-		configuration = &Page{
+	if nil == page {
+		page = &Page{
 			renderMode: RenderModeFull,
 			data:       map[string]any{},
+			headless:   false,
 		}
 	}
 
@@ -1153,7 +1155,7 @@ func SendPage(
 
 	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
 		PageId: pageId,
-		Data:   configuration.data,
+		Data:   page.data,
 		Paths:  pagesToPaths,
 	})
 
@@ -1169,8 +1171,19 @@ func SendPage(
 		panic(targetIdError)
 	}
 
+	if page.headless {
+		_, body, renderError := render(self, routerPropsString)
+		if renderError != nil {
+			ServerNotifyError(self.server, renderError)
+			return
+		}
+		SendHeader(self, "Content-Type", "text/html")
+		SendEcho(self, body)
+		return
+	}
+
 	var index string
-	if RenderModeFull == configuration.renderMode {
+	if RenderModeFull == page.renderMode {
 		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
@@ -1200,7 +1213,7 @@ func SendPage(
 			),
 			1,
 		)
-	} else if RenderModeClient == configuration.renderMode {
+	} else if RenderModeClient == page.renderMode {
 		index = strings.Replace(
 			strings.Replace(
 				strings.Replace(
@@ -1225,7 +1238,7 @@ func SendPage(
 			),
 			1,
 		)
-	} else if RenderModeServer == configuration.renderMode {
+	} else if RenderModeServer == page.renderMode {
 		head, body, renderError := render(self, routerPropsString)
 		if renderError != nil {
 			ServerNotifyError(self.server, renderError)
@@ -1314,4 +1327,29 @@ func ServerWithPage(self *Server,
 	),
 ) {
 	serverWithRoute(self, pattern, pageRouteCreate(pageId, callback))
+}
+
+// ServerWithHeadlessPage maps a page route and renders it in headless mode.
+//
+// Rendering a headless page means it's automatically rendering in server mode,
+// it omits the head tag, the body tag and all css.
+func ServerWithHeadlessPage(
+	self *Server,
+	pattern string,
+	pageId string,
+	callback func(
+		server *Server,
+		request *Request,
+		response *Response,
+		page *Page,
+	),
+) {
+	serverWithRoute(self, pattern,
+		pageRouteCreate(pageId,
+			func(server *Server, request *Request, response *Response, page *Page) {
+				page.headless = true
+				callback(server, request, response, page)
+			},
+		),
+	)
 }
