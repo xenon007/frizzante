@@ -1178,6 +1178,11 @@ func SendPage(
 			return
 		}
 		SendHeader(self, "Content-Type", "text/html")
+
+		body = strings.Replace(body, "<!--[-->", "", -1)
+		body = strings.Replace(body, "<!--]-->", "", -1)
+		body = strings.Replace(body, "<!---->", "", -1)
+
 		SendEcho(self, body)
 		return
 	}
