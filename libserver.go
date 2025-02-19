@@ -750,6 +750,11 @@ func SendHeader(self *Response, key string, value string) {
 	self.header.Set(key, value)
 }
 
+// SendContentType sets the Content-Type header field.
+func SendContentType(self *Response, contentType string) {
+	SendHeader(self, "Content-Type", contentType)
+}
+
 // SendCookie sends a cookies to the client.
 func SendCookie(self *Response, key string, value string) {
 	SendHeader(self, "set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
@@ -1177,7 +1182,11 @@ func SendPage(
 			ServerNotifyError(self.server, renderError)
 			return
 		}
-		SendHeader(self, "Content-Type", "text/html")
+
+		contentType := ReceiveContentType(self.request)
+		if "" == contentType {
+			SendHeader(self, "Content-Type", "text/html")
+		}
 
 		body = strings.Replace(body, "<!--[-->", "", -1)
 		body = strings.Replace(body, "<!--]-->", "", -1)
