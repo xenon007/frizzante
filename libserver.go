@@ -1272,12 +1272,20 @@ func CompilePage(
 func PageCreate(
 	renderMode RenderMode,
 	data map[string]any,
-	headless bool,
 ) *Page {
 	return &Page{
 		renderMode: renderMode,
 		data:       data,
-		headless:   headless,
+		headless:   false,
+	}
+}
+
+// PageHeadlessCreate creates a headless page.
+func PageHeadlessCreate(data map[string]any) *Page {
+	return &Page{
+		renderMode: RenderModeServer,
+		data:       data,
+		headless:   true,
 	}
 }
 
