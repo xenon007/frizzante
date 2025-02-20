@@ -1268,6 +1268,19 @@ func CompilePage(
 	return index, nil
 }
 
+// PageCreate creates a page.
+func PageCreate(
+	renderMode RenderMode,
+	data map[string]any,
+	headless bool,
+) *Page {
+	return &Page{
+		renderMode: renderMode,
+		data:       data,
+		headless:   headless,
+	}
+}
+
 // SendPage renders and echos a svelte page.
 func SendPage(
 	self *Response,
@@ -1276,6 +1289,7 @@ func SendPage(
 ) {
 	content, compileError := CompilePage(self.server.embeddedFileSystem, pageId, page)
 	if nil != compileError {
+		ServerNotifyError(self.server, compileError)
 		return
 	}
 
