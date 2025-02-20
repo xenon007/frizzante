@@ -1278,6 +1278,9 @@ func PageCreate(
 	pageId string,
 	data map[string]any,
 ) *Page {
+	if nil == data {
+		data = map[string]any{}
+	}
 	return &Page{
 		renderMode:         renderMode,
 		data:               data,
@@ -1293,6 +1296,9 @@ func PageHeadlessCreate(
 	pageId string,
 	data map[string]any,
 ) *Page {
+	if nil == data {
+		data = map[string]any{}
+	}
 	return &Page{
 		renderMode:         RenderModeServer,
 		data:               data,
