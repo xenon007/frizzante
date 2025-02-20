@@ -18,6 +18,12 @@ Update dependencies
 make update
 ```
 
+> [!NOTE]
+> Make sure you have `build-essential` installed
+> ```bash
+> sudo apt install build-essential
+> ```
+
 Then start the server
 
 ```bash
