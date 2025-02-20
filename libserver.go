@@ -551,8 +551,10 @@ func pageRouteCreate(
 		pageId: pageId,
 		callback: func(server *Server, request *Request, response *Response) {
 			page := &Page{
-				renderMode: RenderModeFull,
-				data:       map[string]interface{}{},
+				renderMode:         RenderModeFull,
+				data:               map[string]interface{}{},
+				pageId:             pageId,
+				embeddedFileSystem: server.embeddedFileSystem,
 			}
 
 			callback(server, request, response, page)
@@ -600,7 +602,7 @@ func pageRouteCreate(
 				return
 			}
 
-			SendPage(response, pageId, page)
+			SendPage(response, page)
 		},
 		mount: func(patternLocal string) {
 			pattern = patternLocal
@@ -1108,9 +1110,11 @@ type svelteRouterProps struct {
 }
 
 type Page struct {
-	renderMode RenderMode
-	data       map[string]any
-	headless   bool
+	renderMode         RenderMode
+	data               map[string]any
+	headless           bool
+	embeddedFileSystem embed.FS
+	pageId             string
 }
 
 func PageWithRenderMode(self *Page, renderMode RenderMode) {
@@ -1124,22 +1128,17 @@ func PageWithData(self *Page, key string, value any) {
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 var pagesToPaths = map[string]string{}
 
-// CompilePage compiles a svelte page.
-func CompilePage(
-	efs embed.FS,
-	pageId string,
-	page *Page,
-) (string, error) {
-
-	if nil == page {
-		page = &Page{
+// PageCompile compiles a svelte page.
+func PageCompile(self *Page) (string, error) {
+	if nil == self {
+		self = &Page{
 			renderMode: RenderModeFull,
 			data:       map[string]any{},
 			headless:   false,
 		}
 	} else {
-		if nil == page.data {
-			page.data = map[string]any{}
+		if nil == self.data {
+			self.data = map[string]any{}
 		}
 	}
 
@@ -1154,7 +1153,7 @@ func CompilePage(
 		}
 		indexBytes = indexBytesLocal
 	} else {
-		indexBytesLocal, readError := efs.ReadFile(fileNameIndex)
+		indexBytesLocal, readError := self.embeddedFileSystem.ReadFile(fileNameIndex)
 		if readError != nil {
 			return "", readError
 		}
@@ -1162,8 +1161,8 @@ func CompilePage(
 	}
 
 	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
-		PageId: pageId,
-		Data:   page.data,
+		PageId: self.pageId,
+		Data:   self.data,
 		Paths:  pagesToPaths,
 	})
 
@@ -1178,8 +1177,8 @@ func CompilePage(
 		return "", targetIdError
 	}
 
-	if page.headless {
-		_, body, renderError := render(efs, routerPropsString)
+	if self.headless {
+		_, body, renderError := render(self.embeddedFileSystem, routerPropsString)
 		if renderError != nil {
 			return "", renderError
 		}
@@ -1187,8 +1186,8 @@ func CompilePage(
 	}
 
 	var index string
-	if RenderModeFull == page.renderMode {
-		head, body, renderError := render(efs, routerPropsString)
+	if RenderModeFull == self.renderMode {
+		head, body, renderError := render(self.embeddedFileSystem, routerPropsString)
 		if renderError != nil {
 			return "", renderError
 		}
@@ -1216,7 +1215,7 @@ func CompilePage(
 			),
 			1,
 		)
-	} else if RenderModeClient == page.renderMode {
+	} else if RenderModeClient == self.renderMode {
 		index = strings.Replace(
 			strings.Replace(
 				strings.Replace(
@@ -1241,8 +1240,8 @@ func CompilePage(
 			),
 			1,
 		)
-	} else if RenderModeServer == page.renderMode {
-		head, body, renderError := render(efs, routerPropsString)
+	} else if RenderModeServer == self.renderMode {
+		head, body, renderError := render(self.embeddedFileSystem, routerPropsString)
 		if renderError != nil {
 			return "", renderError
 		}
@@ -1294,12 +1293,8 @@ func PageHeadlessCreate(data map[string]any) *Page {
 }
 
 // SendPage renders and echos a svelte page.
-func SendPage(
-	self *Response,
-	pageId string,
-	page *Page,
-) {
-	content, compileError := CompilePage(self.server.embeddedFileSystem, pageId, page)
+func SendPage(self *Response, page *Page) {
+	content, compileError := PageCompile(page)
 	if nil != compileError {
 		ServerNotifyError(self.server, compileError)
 		return
@@ -1343,12 +1338,12 @@ func SendPage(
 func ServerWithSessionOperator(
 	self *Server,
 	sessionOperator func(string) (
-		get func(key string, defaultValue any) (value any),
-		set func(key string, value any),
-		unset func(key string),
-		validate func() (valid bool),
-		destroy func(),
-	),
+	get func(key string, defaultValue any) (value any),
+	set func(key string, value any),
+	unset func(key string),
+	validate func() (valid bool),
+	destroy func(),
+),
 ) {
 	self.sessionOperator = sessionOperator
 }
@@ -1357,10 +1352,10 @@ func ServerWithSessionOperator(
 func ServerWithApi(self *Server,
 	pattern string,
 	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-	),
+	server *Server,
+	request *Request,
+	response *Response,
+),
 ) {
 	serverWithRoute(self, pattern, routeCreate(callback))
 }
@@ -1370,11 +1365,11 @@ func ServerWithPage(self *Server,
 	pattern string,
 	pageId string,
 	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-		page *Page,
-	),
+	server *Server,
+	request *Request,
+	response *Response,
+	page *Page,
+),
 ) {
 	serverWithRoute(self, pattern, pageRouteCreate(pageId, callback))
 }
@@ -1388,11 +1383,11 @@ func ServerWithHeadlessPage(
 	pattern string,
 	pageId string,
 	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-		page *Page,
-	),
+	server *Server,
+	request *Request,
+	response *Response,
+	page *Page,
+),
 ) {
 	serverWithRoute(self, pattern,
 		pageRouteCreate(pageId,
