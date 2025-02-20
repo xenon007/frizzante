@@ -1275,8 +1275,8 @@ func PageCompile(self *Page) (string, error) {
 func PageCreate(
 	embeddedFileSystem embed.FS,
 	renderMode RenderMode,
-	data map[string]any,
 	pageId string,
+	data map[string]any,
 ) *Page {
 	return &Page{
 		renderMode:         renderMode,
@@ -1290,8 +1290,8 @@ func PageCreate(
 // PageHeadlessCreate creates a headless page.
 func PageHeadlessCreate(
 	embeddedFileSystem embed.FS,
-	data map[string]any,
 	pageId string,
+	data map[string]any,
 ) *Page {
 	return &Page{
 		renderMode:         RenderModeServer,
