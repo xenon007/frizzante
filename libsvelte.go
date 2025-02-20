@@ -1,6 +1,7 @@
 package frizzante
 
 import (
+	"embed"
 	"fmt"
 	"github.com/evanw/esbuild/pkg/api"
 	"os"
@@ -16,7 +17,7 @@ const (
 	RenderModeFull   RenderMode = 2 // renderMode on both the server and the client.
 )
 
-func render(response *Response, stringProps string) (string, string, error) {
+func render(efs embed.FS, stringProps string) (string, string, error) {
 	renderFileName := filepath.Join(".dist", "server", "render.server.js")
 
 	var renderEsmBytes []byte
@@ -27,7 +28,7 @@ func render(response *Response, stringProps string) (string, string, error) {
 		}
 		renderEsmBytes = renderEsmBytesLocal
 	} else {
-		renderEsmBytesLocal, readError := response.server.embeddedFileSystem.ReadFile(renderFileName)
+		renderEsmBytesLocal, readError := efs.ReadFile(renderFileName)
 		if readError != nil {
 			return "", "", readError
 		}

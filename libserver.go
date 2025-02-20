@@ -1124,12 +1124,13 @@ func PageWithData(self *Page, key string, value any) {
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 var pagesToPaths = map[string]string{}
 
-// SendPage renders and echos a svelte page.
-func SendPage(
-	self *Response,
+// CompilePage compiles a svelte page.
+func CompilePage(
+	efs embed.FS,
 	pageId string,
 	page *Page,
-) {
+) (string, error) {
+
 	if nil == page {
 		page = &Page{
 			renderMode: RenderModeFull,
@@ -1145,15 +1146,13 @@ func SendPage(
 	if "1" == os.Getenv("DEV") {
 		indexBytesLocal, readError := os.ReadFile(fileNameIndex)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
-			return
+			return "", readError
 		}
 		indexBytes = indexBytesLocal
 	} else {
-		indexBytesLocal, readError := self.server.embeddedFileSystem.ReadFile(fileNameIndex)
+		indexBytesLocal, readError := efs.ReadFile(fileNameIndex)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
-			return
+			return "", readError
 		}
 		indexBytes = indexBytesLocal
 	}
@@ -1165,43 +1164,29 @@ func SendPage(
 	})
 
 	if jsonError != nil {
-		ServerNotifyError(self.server, jsonError)
-		return
+		return "", jsonError
 	}
 
 	routerPropsString := string(routerPropsBytes)
 
 	targetId, targetIdError := uuid.NewV4()
 	if targetIdError != nil {
-		panic(targetIdError)
+		return "", targetIdError
 	}
 
 	if page.headless {
-		_, body, renderError := render(self, routerPropsString)
+		_, body, renderError := render(efs, routerPropsString)
 		if renderError != nil {
-			ServerNotifyError(self.server, renderError)
-			return
+			return "", renderError
 		}
-
-		contentType := ReceiveContentType(self.request)
-		if "" == contentType {
-			SendHeader(self, "Content-Type", "text/html")
-		}
-
-		body = strings.Replace(body, "<!--[-->", "", -1)
-		body = strings.Replace(body, "<!--]-->", "", -1)
-		body = strings.Replace(body, "<!---->", "", -1)
-
-		SendEcho(self, body)
-		return
+		return body, nil
 	}
 
 	var index string
 	if RenderModeFull == page.renderMode {
-		head, body, renderError := render(self, routerPropsString)
+		head, body, renderError := render(efs, routerPropsString)
 		if renderError != nil {
-			ServerNotifyError(self.server, renderError)
-			return
+			return "", renderError
 		}
 		index = strings.Replace(
 			strings.Replace(
@@ -1253,10 +1238,9 @@ func SendPage(
 			1,
 		)
 	} else if RenderModeServer == page.renderMode {
-		head, body, renderError := render(self, routerPropsString)
+		head, body, renderError := render(efs, routerPropsString)
 		if renderError != nil {
-			ServerNotifyError(self.server, renderError)
-			return
+			return "", renderError
 		}
 		index = strings.Replace(
 			strings.Replace(
@@ -1281,8 +1265,34 @@ func SendPage(
 		)
 	}
 
-	SendHeader(self, "Content-Type", "text/html")
-	SendEcho(self, index)
+	return index, nil
+}
+
+// SendPage renders and echos a svelte page.
+func SendPage(
+	self *Response,
+	pageId string,
+	page *Page,
+) {
+	content, compileError := CompilePage(self.server.embeddedFileSystem, pageId, page)
+	if nil != compileError {
+		return
+	}
+
+	contentType := ReceiveContentType(self.request)
+
+	if page.headless {
+		if "" == contentType {
+			contentType = "text/html"
+		}
+
+		content = strings.Replace(content, "<!--[-->", "", -1)
+		content = strings.Replace(content, "<!--]-->", "", -1)
+		content = strings.Replace(content, "<!---->", "", -1)
+	}
+
+	SendHeader(self, "Content-Type", contentType)
+	SendEcho(self, content)
 }
 
 // ServerWithSessionOperator sets the session operator,
