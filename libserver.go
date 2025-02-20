@@ -1348,12 +1348,12 @@ func SendPage(self *Response, page *Page) {
 func ServerWithSessionOperator(
 	self *Server,
 	sessionOperator func(string) (
-	get func(key string, defaultValue any) (value any),
-	set func(key string, value any),
-	unset func(key string),
-	validate func() (valid bool),
-	destroy func(),
-),
+		get func(key string, defaultValue any) (value any),
+		set func(key string, value any),
+		unset func(key string),
+		validate func() (valid bool),
+		destroy func(),
+	),
 ) {
 	self.sessionOperator = sessionOperator
 }
@@ -1362,10 +1362,10 @@ func ServerWithSessionOperator(
 func ServerWithApi(self *Server,
 	pattern string,
 	callback func(
-	server *Server,
-	request *Request,
-	response *Response,
-),
+		server *Server,
+		request *Request,
+		response *Response,
+	),
 ) {
 	serverWithRoute(self, pattern, routeCreate(callback))
 }
@@ -1375,11 +1375,11 @@ func ServerWithPage(self *Server,
 	pattern string,
 	pageId string,
 	callback func(
-	server *Server,
-	request *Request,
-	response *Response,
-	page *Page,
-),
+		server *Server,
+		request *Request,
+		response *Response,
+		page *Page,
+	),
 ) {
 	serverWithRoute(self, pattern, pageRouteCreate(pageId, callback))
 }
@@ -1393,11 +1393,11 @@ func ServerWithHeadlessPage(
 	pattern string,
 	pageId string,
 	callback func(
-	server *Server,
-	request *Request,
-	response *Response,
-	page *Page,
-),
+		server *Server,
+		request *Request,
+		response *Response,
+		page *Page,
+	),
 ) {
 	serverWithRoute(self, pattern,
 		pageRouteCreate(pageId,
