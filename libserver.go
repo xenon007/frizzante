@@ -1273,22 +1273,32 @@ func PageCompile(self *Page) (string, error) {
 
 // PageCreate creates a page.
 func PageCreate(
+	embeddedFileSystem embed.FS,
 	renderMode RenderMode,
 	data map[string]any,
+	pageId string,
 ) *Page {
 	return &Page{
-		renderMode: renderMode,
-		data:       data,
-		headless:   false,
+		renderMode:         renderMode,
+		data:               data,
+		headless:           false,
+		pageId:             pageId,
+		embeddedFileSystem: embeddedFileSystem,
 	}
 }
 
 // PageHeadlessCreate creates a headless page.
-func PageHeadlessCreate(data map[string]any) *Page {
+func PageHeadlessCreate(
+	embeddedFileSystem embed.FS,
+	data map[string]any,
+	pageId string,
+) *Page {
 	return &Page{
-		renderMode: RenderModeServer,
-		data:       data,
-		headless:   true,
+		renderMode:         RenderModeServer,
+		data:               data,
+		headless:           true,
+		pageId:             pageId,
+		embeddedFileSystem: embeddedFileSystem,
 	}
 }
 
