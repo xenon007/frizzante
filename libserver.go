@@ -1137,6 +1137,10 @@ func CompilePage(
 			data:       map[string]any{},
 			headless:   false,
 		}
+	} else {
+		if nil == page.data {
+			page.data = map[string]any{}
+		}
 	}
 
 	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
