@@ -517,8 +517,8 @@ type Route struct {
 	mount    func(pattern string)
 }
 
-// routeCreate creates a route configuration from a callback function.
-func routeCreate(
+// RouteCreate creates a route configuration from a callback function.
+func RouteCreate(
 	callback func(server *Server, request *Request, response *Response),
 ) *Route {
 	return &Route{
@@ -529,15 +529,15 @@ func routeCreate(
 	}
 }
 
-// pageRouteCreate creates a route configuration from a callback function, just like routeCreate.
+// PageRouteCreate creates a route configuration from a callback function, just like RouteCreate.
 //
-// Unlike routeCreate, pageRouteCreate also creates a Page, which is used to automatically
+// Unlike RouteCreate, PageRouteCreate also creates a Page, which is used to automatically
 // to serve a svelte page after invoking callback.
 //
 // Generally speaking, you should never manually invoke SendEcho or similar functions.
 //
 // However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
-func pageRouteCreate(
+func PageRouteCreate(
 	pageId string,
 	callback func(server *Server, request *Request, response *Response, page *Page),
 ) *Route {
@@ -617,10 +617,10 @@ func pageRouteCreate(
 
 var entryCreated = false
 
-// serverWithRoute registers a callback for the given pattern.
+// ServerWithRoute registers a callback for the given pattern.
 //
-// If the given pattern conflicts with one that is already registered, serverWithRoute panics.
-func serverWithRoute(
+// If the given pattern conflicts with one that is already registered, ServerWithRoute panics.
+func ServerWithRoute(
 	self *Server,
 	pattern string,
 	route *Route,
@@ -1383,7 +1383,7 @@ func ServerWithApi(self *Server,
 		response *Response,
 	),
 ) {
-	serverWithRoute(self, pattern, routeCreate(callback))
+	ServerWithRoute(self, pattern, RouteCreate(callback))
 }
 
 // ServerWithPage maps a page route.
@@ -1397,7 +1397,7 @@ func ServerWithPage(self *Server,
 		page *Page,
 	),
 ) {
-	serverWithRoute(self, pattern, pageRouteCreate(pageId, callback))
+	ServerWithRoute(self, pattern, PageRouteCreate(pageId, callback))
 }
 
 // ServerWithHeadlessPage maps a page route and renders it in headless mode.
@@ -1415,8 +1415,8 @@ func ServerWithHeadlessPage(
 		page *Page,
 	),
 ) {
-	serverWithRoute(self, pattern,
-		pageRouteCreate(pageId,
+	ServerWithRoute(self, pattern,
+		PageRouteCreate(pageId,
 			func(server *Server, request *Request, response *Response, page *Page) {
 				page.headless = true
 				callback(server, request, response, page)
