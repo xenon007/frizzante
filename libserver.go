@@ -1128,11 +1128,6 @@ func PageWithData(self *Page, key string, value any) {
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 var pagesToPaths = map[string]string{}
 
-// PageAsPath maps a page as a path.
-func PageAsPath(self *Page, path string) {
-	pagesToPaths[self.pageId] = path
-}
-
 // PageCompile compiles a svelte page.
 func PageCompile(self *Page) (string, error) {
 	if nil == self {
