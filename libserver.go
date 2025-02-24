@@ -519,7 +519,11 @@ type Route struct {
 
 // RouteCreate creates a route configuration from a callback function.
 func RouteCreate(
-	callback func(server *Server, request *Request, response *Response),
+	callback func(
+		server *Server,
+		request *Request,
+		response *Response,
+	),
 ) *Route {
 	return &Route{
 		isPage:   false,
@@ -529,17 +533,22 @@ func RouteCreate(
 	}
 }
 
-// PageRouteCreate creates a route configuration from a callback function, just like RouteCreate.
+// RouteCreateWithPage creates a route configuration from a callback function, just like RouteCreate.
 //
-// Unlike RouteCreate, PageRouteCreate also creates a Page, which is used to automatically
+// Unlike RouteCreate, RouteCreateWithPage also creates a Page, which is used to automatically
 // to serve a svelte page after invoking callback.
 //
 // Generally speaking, you should never manually invoke SendEcho or similar functions.
 //
 // However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
-func PageRouteCreate(
+func RouteCreateWithPage(
 	pageId string,
-	callback func(server *Server, request *Request, response *Response, page *Page),
+	callback func(
+		server *Server,
+		request *Request,
+		response *Response,
+		page *Page,
+	),
 ) *Route {
 	var pattern string
 	if strings.HasSuffix(pageId, ".svelte") {
@@ -549,7 +558,11 @@ func PageRouteCreate(
 	return &Route{
 		isPage: true,
 		pageId: pageId,
-		callback: func(server *Server, request *Request, response *Response) {
+		callback: func(
+			server *Server,
+			request *Request,
+			response *Response,
+		) {
 			page := &Page{
 				renderMode:         RenderModeFull,
 				data:               map[string]interface{}{},
@@ -613,6 +626,34 @@ func PageRouteCreate(
 			}
 		},
 	}
+}
+
+// RouteCreateWithPageAndHeadless creates a headless route configuration from a callback function, just like RouteCreate.
+//
+// Unlike RouteCreate, RouteCreateWithPageAndHeadless also creates a Page, which is used to automatically
+// to serve a svelte page after invoking callback.
+//
+// Generally speaking, you should never manually invoke SendEcho or similar functions.
+//
+// However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
+//
+// Rendering a headless page means it's automatically rendering in server mode,
+// it omits the head tag, the body tag and all css.
+func RouteCreateWithPageAndHeadless(
+	pageId string,
+	callback func(
+		server *Server,
+		request *Request,
+		response *Response,
+		page *Page,
+	),
+) *Route {
+	return RouteCreateWithPage(pageId,
+		func(server *Server, request *Request, response *Response, page *Page) {
+			page.headless = true
+			callback(server, request, response, page)
+		},
+	)
 }
 
 var entryCreated = false
@@ -1290,8 +1331,11 @@ func PageCreate(
 	}
 }
 
-// PageHeadlessCreate creates a headless page.
-func PageHeadlessCreate(
+// PageCreateHeadless creates a headless page.
+//
+// Rendering a headless page means it's automatically rendering in server mode,
+// it omits the head tag, the body tag and all css.
+func PageCreateHeadless(
 	embeddedFileSystem embed.FS,
 	pageId string,
 	data map[string]any,
@@ -1392,14 +1436,14 @@ func ServerWithPage(self *Server,
 		page *Page,
 	),
 ) {
-	ServerWithRoute(self, pattern, PageRouteCreate(pageId, callback))
+	ServerWithRoute(self, pattern, RouteCreateWithPage(pageId, callback))
 }
 
-// ServerWithHeadlessPage maps a page route and renders it in headless mode.
+// ServerWithPageAndHeadless maps a page route and renders it in headless mode.
 //
 // Rendering a headless page means it's automatically rendering in server mode,
 // it omits the head tag, the body tag and all css.
-func ServerWithHeadlessPage(
+func ServerWithPageAndHeadless(
 	self *Server,
 	pattern string,
 	pageId string,
@@ -1411,9 +1455,8 @@ func ServerWithHeadlessPage(
 	),
 ) {
 	ServerWithRoute(self, pattern,
-		PageRouteCreate(pageId,
+		RouteCreateWithPageAndHeadless(pageId,
 			func(server *Server, request *Request, response *Response, page *Page) {
-				page.headless = true
 				callback(server, request, response, page)
 			},
 		),
