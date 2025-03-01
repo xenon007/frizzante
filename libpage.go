@@ -16,6 +16,7 @@ type Page struct {
 	data               map[string]any
 	embeddedFileSystem embed.FS
 	pageId             string
+	path               map[string]string
 }
 
 func PageWithRenderMode(self *Page, renderMode RenderMode) {
@@ -33,6 +34,7 @@ type svelteRouterProps struct {
 	PageId string            `json:"pageId"`
 	Data   map[string]any    `json:"data"`
 	Paths  map[string]string `json:"paths"`
+	Path   map[string]string `json:"path"`
 }
 
 // PageCompile compiles a svelte page.
@@ -41,6 +43,7 @@ func PageCompile(self *Page) (string, error) {
 		self = &Page{
 			renderMode: RenderModeFull,
 			data:       map[string]any{},
+			path:       map[string]string{},
 		}
 	} else {
 		if nil == self.data {
@@ -70,6 +73,7 @@ func PageCompile(self *Page) (string, error) {
 		PageId: self.pageId,
 		Data:   self.data,
 		Paths:  pagesToPaths,
+		Path:   self.path,
 	})
 
 	if jsonError != nil {
@@ -174,7 +178,15 @@ func PageCompile(self *Page) (string, error) {
 		if renderError != nil {
 			return "", renderError
 		}
+
+		body = strings.Replace(body, "<!--[-->", "", -1)
+		body = strings.Replace(body, "<!--]-->", "", -1)
+		body = strings.Replace(body, "<!--!]-->", "", -1)
+		body = strings.Replace(body, "<!--[!-->", "", -1)
+		body = strings.Replace(body, "<!---->", "", -1)
+
 		return body, nil
+
 	}
 
 	return "", nil
@@ -196,5 +208,6 @@ func PageCreate(
 		data:               data,
 		pageId:             pageId,
 		embeddedFileSystem: embeddedFileSystem,
+		path:               map[string]string{},
 	}
 }

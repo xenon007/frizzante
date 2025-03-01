@@ -557,8 +557,9 @@ func routeCreateWithPage(
 			page := &Page{
 				renderMode:         RenderModeFull,
 				data:               map[string]interface{}{},
-				pageId:             pageId,
 				embeddedFileSystem: server.embeddedFileSystem,
+				pageId:             pageId,
+				path:               map[string]string{},
 			}
 
 			callback(server, request, response, page)
@@ -570,6 +571,10 @@ func routeCreateWithPage(
 
 			if nil == page.data {
 				page.data = map[string]any{}
+			}
+
+			if nil == page.path {
+				page.path = map[string]string{}
 			}
 
 			parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
@@ -584,12 +589,11 @@ func routeCreateWithPage(
 				}
 			}
 
-			pathEntry := map[string]string{}
 			for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
 				if len(name) < 1 {
 					continue
 				}
-				pathEntry[name[1]] = request.HttpRequest.PathValue(name[1])
+				page.path[name[1]] = request.HttpRequest.PathValue(name[1])
 			}
 
 			if VerifyAccept(request, "application/json") {
@@ -1028,10 +1032,6 @@ func SendPage(self *Response, page *Page) {
 		if "" == contentType {
 			contentType = "text/html"
 		}
-
-		content = strings.Replace(content, "<!--[-->", "", -1)
-		content = strings.Replace(content, "<!--]-->", "", -1)
-		content = strings.Replace(content, "<!---->", "", -1)
 	}
 
 	SendHeader(self, "Content-Type", contentType)

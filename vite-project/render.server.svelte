@@ -1,27 +1,27 @@
 <script>
     <!--app-imports-->
     import {setContext} from 'svelte'
-    let {pageId, paths, data} = $props()
+    let {pageId, paths, path, data} = $props()
     let reactiveData = $state({...data})
     setContext("data", reactiveData)
     setContext("page", ()=>{})
     setContext("pagePath", function(pageId){
-        let path = paths[pageId]??''
+        let pathLocal = paths[pageId]??''
         if (!paths[pageId]) {
             return ""
         }
         const resolved = {}
-        for(let key in data.path) {
+        for(let key in path) {
             resolved[key] = false
         }
-        for(let key in data.path) {
+        for(let key in path) {
             const value = data[key]
             const regex = escapeRegExp(`{${key}}`)
-            let oldPath = path
-            path = path.replaceAll(new RegExp(regex,'g'), value)
-            resolved[key] = oldPath === path
+            let oldPath = pathLocal
+            pathLocal = pathLocal.replaceAll(new RegExp(regex,'g'), value)
+            resolved[key] = oldPath === pathLocal
         }
-        return path
+        return pathLocal
     })
 
 </script>
