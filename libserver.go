@@ -446,7 +446,7 @@ func ServerStart(self *Server) {
 	}
 
 	if !entryCreated {
-		ServerRoute(self, "GET /",
+		ServerRouteApi(self, "GET /",
 			func(server *Server, request *Request, response *Response) {
 				SendStatus(response, 404)
 			},
@@ -1070,8 +1070,8 @@ func ServerWithSessionOperator(
 	self.sessionOperator = sessionOperator
 }
 
-// ServerRoute routes a pattern to a given callback.
-func ServerRoute(
+// ServerRouteApi routes a pattern to an api callback.
+func ServerRouteApi(
 	self *Server,
 	pattern string,
 	callback func(
@@ -1083,7 +1083,7 @@ func ServerRoute(
 	serverMap(self, pattern, routeCreate(callback))
 }
 
-// ServerRoutePage routes a pattern to a given callback with a page.
+// ServerRoutePage routes a pattern to a page callback.
 func ServerRoutePage(
 	self *Server,
 	pattern string,
