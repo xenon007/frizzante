@@ -3,13 +3,11 @@ package frizzante
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
-	uuid "github.com/nu7hatch/gouuid"
 	"io"
 	"log"
 	"net"
@@ -18,7 +16,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -31,7 +28,6 @@ type Server struct {
 	securePort             int
 	multipartFormMaxMemory int64
 	server                 *http.Server
-	database               *sql.DB
 	mux                    *http.ServeMux
 	sessions               map[string]*net.Conn
 	readTimeout            time.Duration
@@ -40,7 +36,7 @@ type Server struct {
 	logger                 *log.Logger
 	certificate            string
 	certificateKey         string
-	errorHandler           func(error)
+	recallError            func(error)
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
 	webSocketUpgrader      *websocket.Upgrader
@@ -76,7 +72,7 @@ func ServerCreate() *Server {
 		logger:             log.Default(),
 		certificate:        "",
 		certificateKey:     "",
-		errorHandler:       func(error) {},
+		recallError:        func(error) {},
 		temporaryDirectory: ".temp",
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -135,11 +131,6 @@ func ServerCreate() *Server {
 			return
 		},
 	}
-}
-
-// ServerWithDatabase sets the server database.
-func ServerWithDatabase(self *Server, database *sql.DB) {
-	self.database = database
 }
 
 // ServerWithWebSocketReadBufferSize sets the maximum buffer size for each incoming web socket message.
@@ -455,7 +446,7 @@ func ServerStart(self *Server) {
 	}
 
 	if !entryCreated {
-		ServerWithApi(self, "GET /",
+		ServerRoute(self, "GET /",
 			func(server *Server, request *Request, response *Response) {
 				SendStatus(response, 404)
 			},
@@ -517,8 +508,8 @@ type Route struct {
 	mount    func(pattern string)
 }
 
-// RouteCreate creates a route configuration from a callback function.
-func RouteCreate(
+// routeCreate creates a route configuration from a callback function.
+func routeCreate(
 	callback func(
 		server *Server,
 		request *Request,
@@ -533,15 +524,15 @@ func RouteCreate(
 	}
 }
 
-// RouteCreateWithPage creates a route configuration from a callback function, just like RouteCreate.
+// routeCreateWithPage creates a route configuration from a callback function, just like routeCreate.
 //
-// Unlike RouteCreate, RouteCreateWithPage also creates a Page, which is used to automatically
+// Unlike routeCreate, routeCreateWithPage also creates a Page, which is used to automatically
 // to serve a svelte page after invoking callback.
 //
 // Generally speaking, you should never manually invoke SendEcho or similar functions.
 //
 // However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
-func RouteCreateWithPage(
+func routeCreateWithPage(
 	pageId string,
 	callback func(
 		server *Server,
@@ -600,9 +591,6 @@ func RouteCreateWithPage(
 				}
 				pathEntry[name[1]] = request.HttpRequest.PathValue(name[1])
 			}
-			page.data["path"] = pathEntry
-			page.data["query"] = request.HttpRequest.URL.Query()
-			page.data["form"] = request.HttpRequest.Form
 
 			if VerifyAccept(request, "application/json") {
 				data, marshalError := json.Marshal(page.data)
@@ -628,40 +616,12 @@ func RouteCreateWithPage(
 	}
 }
 
-// RouteCreateWithPageAndHeadless creates a headless route configuration from a callback function, just like RouteCreate.
-//
-// Unlike RouteCreate, RouteCreateWithPageAndHeadless also creates a Page, which is used to automatically
-// to serve a svelte page after invoking callback.
-//
-// Generally speaking, you should never manually invoke SendEcho or similar functions.
-//
-// However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
-//
-// Rendering a headless page means it's automatically rendering in server mode,
-// it omits the head tag, the body tag and all css.
-func RouteCreateWithPageAndHeadless(
-	pageId string,
-	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-		page *Page,
-	),
-) *Route {
-	return RouteCreateWithPage(pageId,
-		func(server *Server, request *Request, response *Response, page *Page) {
-			page.headless = true
-			callback(server, request, response, page)
-		},
-	)
-}
-
 var entryCreated = false
 
-// ServerWithRoute registers a callback for the given pattern.
+// serverMap maps a pattern to a given route.
 //
-// If the given pattern conflicts with one that is already registered, ServerWithRoute panics.
-func ServerWithRoute(
+// If the given pattern conflicts with one that is already registered, serverMap panics.
+func serverMap(
 	self *Server,
 	pattern string,
 	route *Route,
@@ -728,14 +688,16 @@ type Response struct {
 	webSocket             *websocket.Conn
 }
 
-// ServerWithErrorReceiver sets the error receiver.
-func ServerWithErrorReceiver(self *Server, callback func(err error)) {
-	self.errorHandler = callback
+// ServerRecallError recalls errors notified by ServerNotifyError.
+func ServerRecallError(self *Server, callback func(err error)) {
+	self.recallError = callback
 }
 
-// ServerNotifyError notifies the server of an error.
+// ServerNotifyError notifies an error.
+//
+// Recall errors with ServerRecallError.
 func ServerNotifyError(self *Server, err error) {
-	self.errorHandler(err)
+	self.recallError(err)
 }
 
 // SendRedirect redirects the request.
@@ -768,7 +730,7 @@ func SendRedirectToSecure(self *Response, statusCode int) bool {
 // so that the next time you invoke this
 // function it will fail with an error.
 //
-// You can retrieve the error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerRecallError.
 func SendStatus(self *Response, code int) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("status is locked"))
@@ -783,7 +745,7 @@ func SendStatus(self *Response, code int) {
 //
 // This means the status will become locked and further attempts to send the status will fail with an error.
 //
-// You can retrieve the error using ServerWithErrorReceiver
+// You can retrieve the error using ServerRecallError
 func SendHeader(self *Response, key string, value string) {
 	if self.lockedStatusAndHeader {
 		ServerNotifyError(self.server, errors.New("headers locked"))
@@ -809,7 +771,7 @@ func SendCookie(self *Response, key string, value string) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve the error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerRecallError.
 //
 // Compatible with web sockets.
 func SendContent(self *Response, content []byte) {
@@ -839,7 +801,7 @@ func SendContent(self *Response, content []byte) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve the error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerRecallError.
 //
 // Compatible with web sockets.
 func SendEcho(self *Response, content string) {
@@ -852,7 +814,7 @@ func SendEcho(self *Response, content string) {
 //
 // The status code and the header will become locked and further attempts to send either of them will fail with an error.
 //
-// You can retrieve the error using ServerWithErrorReceiver.
+// You can retrieve the error using ServerRecallError.
 //
 // Compatible with web sockets.
 func SendJson(self *Response, payload any) {
@@ -1052,311 +1014,6 @@ func SendWebSocketUpgrade(self *Response, callback func()) {
 	callback()
 }
 
-func serverSqlFindNextFallback(dest ...any) bool { return false }
-func severSqlFindCloseFallback()                 {}
-
-// ServerSqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
-func ServerSqlExecute(self *Server, query string, props ...any) *sql.Result {
-	transaction, transactionError := self.database.Begin()
-	if transactionError != nil {
-		ServerNotifyError(self, transactionError)
-		return nil
-	}
-
-	result, execError := transaction.Exec(query, props...)
-	if execError != nil {
-		ServerNotifyError(self, execError)
-		rollbackError := transaction.Rollback()
-		if rollbackError != nil {
-			ServerNotifyError(self, rollbackError)
-		}
-		return nil
-	}
-
-	commitError := transaction.Commit()
-	if commitError != nil {
-		ServerNotifyError(self, commitError)
-		return nil
-	}
-
-	return &result
-}
-
-// ServerSqlFind executes a sql query that returns rows, typically a SELECT query.
-//
-// It returns a next function and a close function.
-//
-// Use next to project the next row onto dest.
-//
-// Next will return false if where are no more rows available.
-//
-// Use close to close the database context and prevent any subsequent enumerations.
-//
-// Whenever next returns false, the database context is closed automatically as if calling close.
-func ServerSqlFind(self *Server, query string, props ...any) (next func(dest ...any) bool, close func()) {
-	next = serverSqlFindNextFallback
-	close = severSqlFindCloseFallback
-
-	rows, queryError := self.database.Query(query, props...)
-	if queryError != nil {
-		ServerNotifyError(self, queryError)
-		return
-	}
-
-	next = func(dest ...any) bool {
-		if !rows.Next() {
-			return false
-		}
-
-		err := rows.Scan(dest...)
-		if err != nil {
-			return false
-		}
-		return true
-	}
-	close = func() {
-		err := rows.Close()
-		if err != nil {
-			ServerNotifyError(self, err)
-		}
-	}
-	return
-}
-
-// ServerSqlCreateTable creates a table from a type.
-func ServerSqlCreateTable[Table any](self *Server) {
-	var query strings.Builder
-	t := reflect.TypeFor[Table]()
-	query.WriteString(fmt.Sprintf("create table `%s`(\n", t.Name()))
-	count := t.NumField()
-	for i := 0; i < count; i++ {
-		field := t.Field(i)
-		rules := field.Tag.Get("sql")
-		if i > 0 {
-			query.WriteString(",\n")
-		}
-		query.WriteString(fmt.Sprintf("`%s` %s", field.Name, rules))
-	}
-	query.WriteString(");")
-	_, err := self.database.Exec(query.String())
-	if err != nil {
-		ServerNotifyError(self, err)
-	}
-}
-
-type svelteRouterProps struct {
-	PageId string            `json:"pageId"`
-	Data   map[string]any    `json:"data"`
-	Paths  map[string]string `json:"paths"`
-}
-
-type Page struct {
-	renderMode         RenderMode
-	data               map[string]any
-	headless           bool
-	embeddedFileSystem embed.FS
-	pageId             string
-}
-
-func PageWithRenderMode(self *Page, renderMode RenderMode) {
-	self.renderMode = renderMode
-}
-
-func PageWithData(self *Page, key string, value any) {
-	self.data[key] = value
-}
-
-var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
-var pagesToPaths = map[string]string{}
-
-// PageCompile compiles a svelte page.
-func PageCompile(self *Page) (string, error) {
-	if nil == self {
-		self = &Page{
-			renderMode: RenderModeFull,
-			data:       map[string]any{},
-			headless:   false,
-		}
-	} else {
-		if nil == self.data {
-			self.data = map[string]any{}
-		}
-	}
-
-	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
-
-	var indexBytes []byte
-
-	if "1" == os.Getenv("DEV") {
-		indexBytesLocal, readError := os.ReadFile(fileNameIndex)
-		if readError != nil {
-			return "", readError
-		}
-		indexBytes = indexBytesLocal
-	} else {
-		indexBytesLocal, readError := self.embeddedFileSystem.ReadFile(fileNameIndex)
-		if readError != nil {
-			return "", readError
-		}
-		indexBytes = indexBytesLocal
-	}
-
-	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
-		PageId: self.pageId,
-		Data:   self.data,
-		Paths:  pagesToPaths,
-	})
-
-	if jsonError != nil {
-		return "", jsonError
-	}
-
-	routerPropsString := string(routerPropsBytes)
-
-	targetId, targetIdError := uuid.NewV4()
-	if targetIdError != nil {
-		return "", targetIdError
-	}
-
-	if self.headless {
-		_, body, renderError := render(self.embeddedFileSystem, routerPropsString)
-		if renderError != nil {
-			return "", renderError
-		}
-		return body, nil
-	}
-
-	var index string
-	if RenderModeFull == self.renderMode {
-		head, body, renderError := render(self.embeddedFileSystem, routerPropsString)
-		if renderError != nil {
-			return "", renderError
-		}
-		index = strings.Replace(
-			strings.Replace(
-				strings.Replace(
-					strings.Replace(
-						string(indexBytes),
-						"<!--app-target-->",
-						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
-						1,
-					),
-					"<!--app-body-->",
-					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
-					1,
-				),
-				"<!--app-head-->",
-				head,
-				1,
-			),
-			"<!--app-data-->",
-			fmt.Sprintf(
-				`<script type="application/javascript">function props(){return %s}</script>`,
-				routerPropsString,
-			),
-			1,
-		)
-	} else if RenderModeClient == self.renderMode {
-		index = strings.Replace(
-			strings.Replace(
-				strings.Replace(
-					strings.Replace(
-						string(indexBytes),
-						"<!--app-target-->",
-						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
-						1,
-					),
-					"<!--app-body-->",
-					fmt.Sprintf(`<div id="%s"></div>`, targetId),
-					1,
-				),
-				"<!--app-head-->",
-				"",
-				1,
-			),
-			"<!--app-data-->",
-			fmt.Sprintf(
-				`<script type="application/javascript">function props(){return %s}</script>`,
-				routerPropsString,
-			),
-			1,
-		)
-	} else if RenderModeServer == self.renderMode {
-		head, body, renderError := render(self.embeddedFileSystem, routerPropsString)
-		if renderError != nil {
-			return "", renderError
-		}
-		index = strings.Replace(
-			strings.Replace(
-				strings.Replace(
-					strings.Replace(
-						noScriptPattern.ReplaceAllString(string(indexBytes), ""),
-						"<!--app-target-->",
-						``,
-						1,
-					),
-					"<!--app-body-->",
-					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
-					1,
-				),
-				"<!--app-head-->",
-				head,
-				1,
-			),
-			"<!--app-data-->",
-			"",
-			1,
-		)
-	}
-
-	return index, nil
-}
-
-// PageCreate creates a page.
-func PageCreate(
-	embeddedFileSystem embed.FS,
-	renderMode RenderMode,
-	pageId string,
-	data map[string]any,
-) *Page {
-	if nil == data {
-		data = map[string]any{}
-	}
-	return &Page{
-		renderMode:         renderMode,
-		data:               data,
-		headless:           false,
-		pageId:             pageId,
-		embeddedFileSystem: embeddedFileSystem,
-	}
-}
-
-// PageCreateHeadless creates a headless page.
-//
-// Rendering a headless page means it's automatically rendering in server mode,
-// it omits the head tag, the body tag and all css.
-func PageCreateHeadless(
-	embeddedFileSystem embed.FS,
-	pageId string,
-	data map[string]any,
-) *Page {
-	if nil == data {
-		data = map[string]any{}
-	}
-
-	data["form"] = map[string]any{}
-	data["query"] = map[string]any{}
-	data["path"] = map[string]any{}
-
-	return &Page{
-		renderMode:         RenderModeServer,
-		data:               data,
-		headless:           true,
-		pageId:             pageId,
-		embeddedFileSystem: embeddedFileSystem,
-	}
-}
-
 // SendPage renders and echos a svelte page.
 func SendPage(self *Response, page *Page) {
 	content, compileError := PageCompile(page)
@@ -1367,7 +1024,7 @@ func SendPage(self *Response, page *Page) {
 
 	contentType := ReceiveContentType(self.request)
 
-	if page.headless {
+	if RenderModeHeadless == page.renderMode {
 		if "" == contentType {
 			contentType = "text/html"
 		}
@@ -1413,8 +1070,9 @@ func ServerWithSessionOperator(
 	self.sessionOperator = sessionOperator
 }
 
-// ServerWithApi maps an api route.
-func ServerWithApi(self *Server,
+// ServerRoute routes a pattern to a given callback.
+func ServerRoute(
+	self *Server,
 	pattern string,
 	callback func(
 		server *Server,
@@ -1422,28 +1080,11 @@ func ServerWithApi(self *Server,
 		response *Response,
 	),
 ) {
-	ServerWithRoute(self, pattern, RouteCreate(callback))
+	serverMap(self, pattern, routeCreate(callback))
 }
 
-// ServerWithPage maps a page route.
-func ServerWithPage(self *Server,
-	pattern string,
-	pageId string,
-	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-		page *Page,
-	),
-) {
-	ServerWithRoute(self, pattern, RouteCreateWithPage(pageId, callback))
-}
-
-// ServerWithPageAndHeadless maps a page route and renders it in headless mode.
-//
-// Rendering a headless page means it's automatically rendering in server mode,
-// it omits the head tag, the body tag and all css.
-func ServerWithPageAndHeadless(
+// ServerRoutePage routes a pattern to a given callback with a page.
+func ServerRoutePage(
 	self *Server,
 	pattern string,
 	pageId string,
@@ -1454,11 +1095,5 @@ func ServerWithPageAndHeadless(
 		page *Page,
 	),
 ) {
-	ServerWithRoute(self, pattern,
-		RouteCreateWithPageAndHeadless(pageId,
-			func(server *Server, request *Request, response *Response, page *Page) {
-				callback(server, request, response, page)
-			},
-		),
-	)
+	serverMap(self, pattern, routeCreateWithPage(pageId, callback))
 }

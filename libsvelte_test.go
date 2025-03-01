@@ -13,10 +13,10 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerWithPort(server, port)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithErrorReceiver(server, func(err error) {
+	ServerRecallError(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerWithPage(server, "GET /", "welcome",
+	ServerRoutePage(server, "GET /", "welcome",
 		func(server *Server, request *Request, response *Response, page *Page) {
 			PageWithRenderMode(page, RenderModeServer)
 			PageWithData(page, "name", "world")
@@ -44,10 +44,10 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerWithPort(server, port)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithErrorReceiver(server, func(err error) {
+	ServerRecallError(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerWithPage(server, "GET /", "welcome",
+	ServerRoutePage(server, "GET /", "welcome",
 		func(server *Server, request *Request, response *Response, page *Page) {
 			PageWithRenderMode(page, RenderModeClient)
 			PageWithData(page, "name", "world")

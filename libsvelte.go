@@ -12,9 +12,10 @@ import (
 type RenderMode int64
 
 const (
-	RenderModeServer RenderMode = 0 // Renders only on the server.
-	RenderModeClient RenderMode = 1 // Renders only on the client.
-	RenderModeFull   RenderMode = 2 // Renders on both the server and the client.
+	RenderModeServer   RenderMode = 0 // Renders only on the server.
+	RenderModeClient   RenderMode = 1 // Renders only on the client.
+	RenderModeFull     RenderMode = 2 // Renders on both the server and the client.
+	RenderModeHeadless RenderMode = 3 // Renders only on the server and omits the base template.
 )
 
 func render(efs embed.FS, stringProps string) (string, string, error) {
