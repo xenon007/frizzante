@@ -49,6 +49,10 @@ func PageCompile(self *Page) (string, error) {
 		if nil == self.data {
 			self.data = map[string]any{}
 		}
+
+		if nil == self.path {
+			self.path = map[string]string{}
+		}
 	}
 
 	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
