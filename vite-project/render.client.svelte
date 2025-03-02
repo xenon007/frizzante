@@ -18,7 +18,10 @@
     )
     setContext("path", pathFn)
 
-    history.replaceState({pageId, navCounter: navCounterPrevious}, "", document.location.pathname)
+    window.history.replaceState({
+        ...(window.history.state ?? {}),
+        pageId, navCounter: navCounterPrevious
+    }, "", document.location.pathname)
 
     window.addEventListener("popstate", (e) => {
         e.preventDefault()
