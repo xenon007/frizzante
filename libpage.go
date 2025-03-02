@@ -15,14 +15,8 @@ type Page struct {
 	renderMode         RenderMode
 	data               map[string]any
 	embeddedFileSystem embed.FS
-	title              string
 	id                 string
 	path               map[string]string
-}
-
-// PageWithTitle sets the page title.
-func PageWithTitle(self *Page, title string) {
-	self.title = title
 }
 
 // PageWithRenderMode sets the page rendering mode.
