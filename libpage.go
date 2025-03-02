@@ -102,11 +102,7 @@ func PageCompile(self *Page) (string, error) {
 			strings.Replace(
 				strings.Replace(
 					strings.Replace(
-						strings.ReplaceAll(
-							string(indexBytes),
-							"<!--app-title-->",
-							self.title,
-						),
+						string(indexBytes),
 						"<!--app-target-->",
 						fmt.Sprintf("<script type=\"application/javascript\">function target(){return document.getElementById(\"%s\")}</script>", targetId),
 						1,
@@ -133,11 +129,7 @@ func PageCompile(self *Page) (string, error) {
 			strings.Replace(
 				strings.Replace(
 					strings.Replace(
-						strings.ReplaceAll(
-							string(indexBytes),
-							"<!--app-title-->",
-							self.title,
-						),
+						string(indexBytes),
 						"<!--app-target-->",
 						fmt.Sprintf("<script type=\"application/javascript\">function target(){return document.getElementById(\"%s\")}</script>", targetId),
 						1,
@@ -168,11 +160,7 @@ func PageCompile(self *Page) (string, error) {
 			strings.Replace(
 				strings.Replace(
 					strings.Replace(
-						strings.ReplaceAll(
-							noScriptPattern.ReplaceAllString(string(indexBytes), ""),
-							"<!--app-title-->",
-							self.title,
-						),
+						noScriptPattern.ReplaceAllString(string(indexBytes), ""),
 						"<!--app-target-->",
 						"",
 						1,
