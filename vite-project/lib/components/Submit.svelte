@@ -40,25 +40,33 @@
     let formElement
 
     /**
-     * @param {Response} response
+     * @param {string} queryString
      */
-    async function done(response) {
-        if (response.status >= 300) {
-            console.error(`Submit request failed with status ${response.status} ${response.statusText}.`)
-            return
+    function done(queryString) {
+        /**
+         * @param {Response} response
+         */
+        return function (response) {
+            if (response.status >= 300) {
+                console.error(`Submit request failed with status ${response.status} ${response.statusText}.`)
+                return
+            }
+
+            response.json()
+                .then(function (data) {
+                    const state = window.history.state ?? {}
+                    history.replaceState(state, "", `${window.location.pathname}${queryString}`)
+                    for (const key in dataState) {
+                        delete dataState[key]
+                    }
+
+                    for (const key in data) {
+                        dataState[key] = data[key]
+                    }
+
+                })
+                .catch(fail)
         }
-
-        response.json()
-            .then(function (data) {
-                for (const key in dataState) {
-                    delete dataState[key]
-                }
-
-                for (const key in data) {
-                    dataState[key] = data[key]
-                }
-            })
-            .catch(fail)
     }
 
     /**
@@ -83,7 +91,7 @@
             }
             const search = data.toString()
             const queryString = `?${search}`
-            fetch(queryString, {method, headers}).then(done).catch(fail)
+            fetch(queryString, {method, headers}).then(done(queryString)).catch(fail)
             return
         }
 

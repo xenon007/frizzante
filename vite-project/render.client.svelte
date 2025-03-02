@@ -6,21 +6,47 @@
     // Do not remove or discard `pageId`, it's being used by app-router.
     let pageIdState = $state(pageId)
     let dataState = $state({...data})
+    let navCounterPrevious = 0
     setContext("data", dataState)
-    setContext("page", pageFn)
+    setContext("page",
+        /**
+         * @param {string} pageIdLocal
+         */
+        function (pageIdLocal) {
+            pageFn(pageIdLocal, "push")
+        }
+    )
     setContext("path", pathFn)
-    window.addEventListener('popstate', (event) => {
-        if(event.state.pageId){
-            pageFn(event.state.pageId)
+
+    history.replaceState({pageId, navCounter: navCounterPrevious}, "", document.location.pathname)
+
+    window.addEventListener("popstate", (e) => {
+        e.preventDefault()
+        const pageIdLocal = e.state?.pageId ?? ""
+        const navCounterLocal = e.state?.navCounter ?? 0
+        if (navCounterLocal < navCounterPrevious) {
+            pageFn(pageIdLocal, "back")
+            navCounterPrevious = navCounterLocal
+        } else if (navCounterLocal > navCounterPrevious) {
+            pageFn(pageIdLocal, "forward")
+            navCounterPrevious = navCounterLocal
+        } else {
+            pageFn(pageIdLocal, "push")
         }
     });
 
+    /**
+     * @param {string} string
+     */
     function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     }
 
+    /**
+     * @param {string} pageId
+     */
     function pathFn(pageId) {
-        let result = paths[pageId] ?? ''
+        let result = paths[pageId] ?? ""
         if (!paths[pageId]) {
             return ""
         }
@@ -32,21 +58,28 @@
             const value = dataState[key]
             const regex = escapeRegExp(`{${key}}`)
             let oldPath = result
-            result = result.replaceAll(new RegExp(regex, 'g'), value)
+            result = result.replaceAll(new RegExp(regex, "g"), value)
             resolved[key] = oldPath === result
         }
 
         return result
     }
 
-    function pageFn(pageIdLocal) {
+    /**
+     *
+     * @param {string} pageIdLocal
+     * @param {"back"|"forward"|"push"} modifier
+     */
+    function pageFn(pageIdLocal, modifier) {
         if (!paths[pageIdLocal]) {
             return
         }
 
         const pathLocal = pathFn(pageIdLocal)
-        history.pushState({pageIdLocal}, '', pathLocal);
-        pageId = pageIdLocal
+        if ("push" === modifier) {
+            window.history.pushState({pageId: pageIdLocal, navCounter: ++navCounterPrevious}, "", pathLocal);
+        }
+        pageIdState = pageIdLocal
 
         fetch(pathLocal, {headers: {"Accept": "application/json"}}).then(async (response) => {
             const data = await response.json()
