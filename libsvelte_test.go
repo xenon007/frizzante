@@ -16,7 +16,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerRecallError(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerRoutePage(server, "GET /", "welcome",
+	ServerRoutePage(server, "GET /", "Welcome",
 		func(server *Server, request *Request, response *Response, page *Page) {
 			PageWithRenderMode(page, RenderModeServer)
 			PageWithData(page, "name", "world")
@@ -47,7 +47,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerRecallError(server, func(err error) {
 		test.Fatal(err)
 	})
-	ServerRoutePage(server, "GET /", "welcome",
+	ServerRoutePage(server, "GET /", "Welcome",
 		func(server *Server, request *Request, response *Response, page *Page) {
 			PageWithRenderMode(page, RenderModeClient)
 			PageWithData(page, "name", "world")
