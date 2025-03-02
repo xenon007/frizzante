@@ -21,7 +21,7 @@
     window.history.replaceState({
         ...(window.history.state ?? {}),
         pageId, navCounter: navCounterPrevious
-    }, "", document.location.pathname)
+    }, "", `${document.location.pathname}${document.location.hash}${document.location.search}`)
 
     window.addEventListener("popstate", (e) => {
         e.preventDefault()

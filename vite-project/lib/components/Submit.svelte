@@ -55,7 +55,7 @@
             response.json()
                 .then(function (data) {
                     const state = window.history.state ?? {}
-                    history.replaceState(state, "", `${window.location.pathname}${queryString}`)
+                    history.replaceState(state, "", `${window.location.pathname}${document.location.hash}${queryString}`)
                     for (const key in dataState) {
                         delete dataState[key]
                     }
