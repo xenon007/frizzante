@@ -20,14 +20,19 @@ type Page struct {
 	path               map[string]string
 }
 
+// PageWithTitle sets the page title.
 func PageWithTitle(self *Page, title string) {
-
+	self.title = title
 }
 
+// PageWithRenderMode sets the page rendering mode.
 func PageWithRenderMode(self *Page, renderMode RenderMode) {
 	self.renderMode = renderMode
 }
 
+// PageWithData sets the page data.
+//
+// Retrieve this data in your svelte components with getContext("data").
 func PageWithData(self *Page, key string, value any) {
 	self.data[key] = value
 }
