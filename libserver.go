@@ -558,7 +558,7 @@ func routeCreateWithPage(
 				renderMode:         RenderModeFull,
 				data:               map[string]interface{}{},
 				embeddedFileSystem: server.embeddedFileSystem,
-				pageId:             pageId,
+				id:                 pageId,
 				path:               map[string]string{},
 			}
 

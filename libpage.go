@@ -15,8 +15,13 @@ type Page struct {
 	renderMode         RenderMode
 	data               map[string]any
 	embeddedFileSystem embed.FS
-	pageId             string
+	title              string
+	id                 string
 	path               map[string]string
+}
+
+func PageWithTitle(self *Page, title string) {
+
 }
 
 func PageWithRenderMode(self *Page, renderMode RenderMode) {
@@ -27,7 +32,7 @@ func PageWithData(self *Page, key string, value any) {
 	self.data[key] = value
 }
 
-var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
+var noScriptPattern = regexp.MustCompile("<script.*>.*</script>")
 var pagesToPaths = map[string]string{}
 
 type svelteRouterProps struct {
@@ -39,20 +44,12 @@ type svelteRouterProps struct {
 
 // PageCompile compiles a svelte page.
 func PageCompile(self *Page) (string, error) {
-	if nil == self {
-		self = &Page{
-			renderMode: RenderModeFull,
-			data:       map[string]any{},
-			path:       map[string]string{},
-		}
-	} else {
-		if nil == self.data {
-			self.data = map[string]any{}
-		}
+	if nil == self.data {
+		self.data = map[string]any{}
+	}
 
-		if nil == self.path {
-			self.path = map[string]string{}
-		}
+	if nil == self.path {
+		self.path = map[string]string{}
 	}
 
 	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
@@ -74,7 +71,7 @@ func PageCompile(self *Page) (string, error) {
 	}
 
 	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
-		PageId: self.pageId,
+		PageId: self.id,
 		Data:   self.data,
 		Paths:  pagesToPaths,
 		Path:   self.path,
@@ -100,13 +97,17 @@ func PageCompile(self *Page) (string, error) {
 			strings.Replace(
 				strings.Replace(
 					strings.Replace(
-						string(indexBytes),
+						strings.ReplaceAll(
+							string(indexBytes),
+							"<!--app-title-->",
+							self.title,
+						),
 						"<!--app-target-->",
-						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
+						fmt.Sprintf("<script type=\"application/javascript\">function target(){return document.getElementById(\"%s\")}</script>", targetId),
 						1,
 					),
 					"<!--app-body-->",
-					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
+					fmt.Sprintf("<div id=\"%s\">%s</div>", targetId, body),
 					1,
 				),
 				"<!--app-head-->",
@@ -115,7 +116,7 @@ func PageCompile(self *Page) (string, error) {
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				`<script type="application/javascript">function props(){return %s}</script>`,
+				"<script type=\"application/javascript\">function props(){return %s}</script>",
 				routerPropsString,
 			),
 			1,
@@ -127,13 +128,17 @@ func PageCompile(self *Page) (string, error) {
 			strings.Replace(
 				strings.Replace(
 					strings.Replace(
-						string(indexBytes),
+						strings.ReplaceAll(
+							string(indexBytes),
+							"<!--app-title-->",
+							self.title,
+						),
 						"<!--app-target-->",
-						fmt.Sprintf(`<script type="application/javascript">function target(){return document.getElementById("%s")}</script>`, targetId),
+						fmt.Sprintf("<script type=\"application/javascript\">function target(){return document.getElementById(\"%s\")}</script>", targetId),
 						1,
 					),
 					"<!--app-body-->",
-					fmt.Sprintf(`<div id="%s"></div>`, targetId),
+					fmt.Sprintf("<div id=\"%s\"></div>", targetId),
 					1,
 				),
 				"<!--app-head-->",
@@ -142,7 +147,7 @@ func PageCompile(self *Page) (string, error) {
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				`<script type="application/javascript">function props(){return %s}</script>`,
+				"<script type=\"application/javascript\">function props(){return %s}</script>",
 				routerPropsString,
 			),
 			1,
@@ -158,13 +163,17 @@ func PageCompile(self *Page) (string, error) {
 			strings.Replace(
 				strings.Replace(
 					strings.Replace(
-						noScriptPattern.ReplaceAllString(string(indexBytes), ""),
+						strings.ReplaceAll(
+							noScriptPattern.ReplaceAllString(string(indexBytes), ""),
+							"<!--app-title-->",
+							self.title,
+						),
 						"<!--app-target-->",
-						``,
+						"",
 						1,
 					),
 					"<!--app-body-->",
-					fmt.Sprintf(`<div id="%s">%s</div>`, targetId, body),
+					fmt.Sprintf("<div id=\"%s\">%s</div>", targetId, body),
 					1,
 				),
 				"<!--app-head-->",
@@ -210,7 +219,7 @@ func PageCreate(
 	return &Page{
 		renderMode:         renderMode,
 		data:               data,
-		pageId:             pageId,
+		id:                 pageId,
 		embeddedFileSystem: embeddedFileSystem,
 		path:               map[string]string{},
 	}
