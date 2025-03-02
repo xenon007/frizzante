@@ -1,13 +1,16 @@
 <style>
     .btn {
         width: 100%;
-        background: none;
         border: 0;
         background: transparent;
     }
 
     .start {
         text-align: start;
+    }
+
+    .center {
+        text-align: center;
     }
 
     .end {
@@ -95,7 +98,7 @@
             return
         }
 
-        fetch("?", {method, headers, body: form}).then(done)
+        fetch("?", {method, headers, body: form}).then(done(""))
     }
 </script>
 <form bind:this={formElement} {method} action="?" {onsubmit}>

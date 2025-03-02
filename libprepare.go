@@ -169,6 +169,11 @@ func prepareSveltePagesStart() error {
 		return submitSvelteError
 	}
 
+	linkSvelte, linkSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/Link.svelte")
+	if linkSvelteError != nil {
+		return linkSvelteError
+	}
+
 	if !Exists(".frizzante/vite-project") {
 		err := os.MkdirAll(".frizzante/vite-project", os.ModePerm)
 		if err != nil {
@@ -204,6 +209,11 @@ func prepareSveltePagesStart() error {
 	}
 
 	err = os.WriteFile(".frizzante/vite-project/lib/components/Submit.svelte", submitSvelte, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(".frizzante/vite-project/lib/components/Link.svelte", linkSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
