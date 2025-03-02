@@ -11,30 +11,34 @@
     setContext("page",
         /**
          * @param {string} pageIdLocal
+         * @param {Record<string,string>} [fields]
          */
-        function (pageIdLocal) {
-            pageFn(pageIdLocal, "push")
+        function (pageIdLocal, fields) {
+            pageFn(pageIdLocal, "push", fields)
         }
     )
     setContext("path", pathFn)
 
     window.history.replaceState({
         ...(window.history.state ?? {}),
-        pageId, navCounter: navCounterPrevious
+        pageId,
+        fields: path,
+        navCounter: navCounterPrevious,
     }, "", `${document.location.pathname}${document.location.hash}${document.location.search}`)
 
     window.addEventListener("popstate", (e) => {
         e.preventDefault()
         const pageIdLocal = e.state?.pageId ?? ""
+        const fields = e.state?.fields ?? {}
         const navCounterLocal = e.state?.navCounter ?? 0
         if (navCounterLocal < navCounterPrevious) {
-            pageFn(pageIdLocal, "back")
+            pageFn(pageIdLocal, "back", fields)
             navCounterPrevious = navCounterLocal
         } else if (navCounterLocal > navCounterPrevious) {
-            pageFn(pageIdLocal, "forward")
+            pageFn(pageIdLocal, "forward", fields)
             navCounterPrevious = navCounterLocal
         } else {
-            pageFn(pageIdLocal, "push")
+            pageFn(pageIdLocal, "push", fields)
         }
     });
 
@@ -47,22 +51,18 @@
 
     /**
      * @param {string} pageId
+     * @param {Record<string,string>} [fields]
      */
-    function pathFn(pageId) {
+    function pathFn(pageId, fields = {}) {
         let result = paths[pageId] ?? ""
         if (!paths[pageId]) {
             return ""
         }
-        const resolved = {}
-        for (let key in path) {
-            resolved[key] = false
-        }
-        for (let key in path) {
-            const value = dataState[key]
+
+        for (let key in fields) {
+            const value = fields[key]
             const regex = escapeRegExp(`{${key}}`)
-            let oldPath = result
             result = result.replaceAll(new RegExp(regex, "g"), value)
-            resolved[key] = oldPath === result
         }
 
         return result
@@ -72,15 +72,20 @@
      *
      * @param {string} pageIdLocal
      * @param {"back"|"forward"|"push"} modifier
+     * @param {Record<string,string>} fields
      */
-    function pageFn(pageIdLocal, modifier) {
+    function pageFn(pageIdLocal, modifier, fields) {
         if (!paths[pageIdLocal]) {
             return
         }
 
-        const pathLocal = pathFn(pageIdLocal)
+        const pathLocal = pathFn(pageIdLocal, fields)
         if ("push" === modifier) {
-            window.history.pushState({pageId: pageIdLocal, navCounter: ++navCounterPrevious}, "", pathLocal);
+            window.history.pushState({
+                pageId: pageIdLocal,
+                fields: fields,
+                navCounter: ++navCounterPrevious,
+            }, "", pathLocal);
         }
         pageIdState = pageIdLocal
 
