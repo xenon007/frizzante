@@ -2,7 +2,7 @@
     let PreviousComponent = $state(false)
 </script>
 <script>
-    let {from, pageId} = $props()
+    let {from} = $props()
     from.then((page) => {
         PreviousComponent = page
     })

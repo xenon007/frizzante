@@ -81,7 +81,7 @@ func prepareServerLoader() error {
 		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(id), fileName))
 	}
 
-	renderServerSvelteString := strings.Replace(string(renderServerSvelte), "<!--app-imports-->", builder.String(), 1)
+	renderServerSvelteString := strings.Replace(string(renderServerSvelte), "//:app-imports", builder.String(), 1)
 
 	builder.Reset()
 	counter := 0
@@ -116,15 +116,15 @@ func prepareClientLoader() error {
 
 	var builder strings.Builder
 	builder.WriteString("import Page from './page.async.svelte'")
-	renderClientSvelteString := strings.Replace(string(renderClientSvelte), "<!--app-imports-->", builder.String(), 1)
+	renderClientSvelteString := strings.Replace(string(renderClientSvelte), "//:app-imports", builder.String(), 1)
 
 	builder.Reset()
 	counter := 0
 	for pageId, fileName := range sveltePagesToFileNames {
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", pageId))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageIdState}\n", pageId))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", pageId))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageIdState}\n", pageId))
 		}
 		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
 		counter++
