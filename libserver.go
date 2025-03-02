@@ -1026,15 +1026,7 @@ func SendPage(self *Response, page *Page) {
 		return
 	}
 
-	contentType := ReceiveContentType(self.request)
-
-	if RenderModeHeadless == page.renderMode {
-		if "" == contentType {
-			contentType = "text/html"
-		}
-	}
-
-	SendHeader(self, "Content-Type", contentType)
+	SendHeader(self, "Content-Type", "text/html")
 	SendEcho(self, content)
 }
 
