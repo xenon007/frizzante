@@ -10,7 +10,9 @@
     setContext("page", pageFn)
     setContext("path", pathFn)
     window.addEventListener('popstate', (event) => {
-        pageFn(event.state.pageId)
+        if(event.state.pageId){
+            pageFn(event.state.pageId)
+        }
     });
 
     function escapeRegExp(string) {

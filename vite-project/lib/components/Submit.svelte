@@ -82,9 +82,14 @@
                 data.append(key, value.toString());
             }
             const search = data.toString()
-            const path = `?${search}`
-            document.location.search = search
-            fetch(path, {method, headers}).then(done).catch(fail)
+            const queryString = `?${search}`
+
+            if (history.pushState) {
+                const path = `${window.location.protocol}//${window.location.host}${window.location.pathname}${queryString}`
+                window.history.pushState({}, '', path);
+            }
+
+            fetch(queryString, {method, headers}).then(done).catch(fail)
             return
         }
 
