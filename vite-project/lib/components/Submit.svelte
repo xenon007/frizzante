@@ -38,7 +38,7 @@
     } = $props()
 
 </script>
-<form bind:this={formElement} {method} action="?" {onsubmit}>
+<form {method} action="?" {onsubmit}>
     {#each Object.keys(form) as key}
         {@const value = form[key]}
         <input type="hidden" name="{key}" value="{value}">
