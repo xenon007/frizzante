@@ -1,5 +1,3 @@
-import {getContext} from "svelte";
-
 /**
  * @typedef Props
  * @property {import("svelte").Snippet} children
@@ -10,8 +8,9 @@ import {getContext} from "svelte";
 
 /**
  * @param {string} queryString
+ * @param {Record<string,any>} dataState
  */
-function done(queryString) {
+function done(queryString, dataState) {
     /**
      * @param {Response} response
      */
@@ -23,7 +22,6 @@ function done(queryString) {
 
         response.json()
             .then(function (data) {
-                const dataState = getContext("data")
                 const state = window.history.state ?? {}
                 history.replaceState(state, "", `${window.location.pathname}${document.location.hash}${queryString}`)
                 for (const key in dataState) {
@@ -47,26 +45,30 @@ function fail(reason) {
 }
 
 /**
- * @param {SubmitEvent} e
+ *
+ * @param {Record<string,any>} state
+ * @return {function(e:SubmitEvent)}
  */
-export function onsubmit(e) {
-    e.preventDefault()
-    const headers = {"Accept": "application/json"}
-    /** @type {HTMLFormElement} */
-    const element = e.target
-    const form = new FormData(element)
-    const method = element.method
+export function update(state) {
+    return function onsubmit(e) {
+        e.preventDefault()
+        /** @type {HTMLFormElement} */
+        const formElement = e.target
+        const formData = new FormData(formElement)
+        const method = formElement.method
+        const headers = {"Accept": "application/json"}
 
-    if (method === "get" || method === "GET") {
-        const data = new URLSearchParams();
-        for (const [key, value] of form) {
-            data.append(key, value.toString());
+        if (method === "get" || method === "GET") {
+            const data = new URLSearchParams();
+            for (const [key, value] of formData) {
+                data.append(key, value.toString());
+            }
+            const search = data.toString()
+            const queryString = `?${search}`
+            fetch(queryString, {method, headers}).then(done(queryString, state)).catch(fail)
+            return
         }
-        const search = data.toString()
-        const queryString = `?${search}`
-        fetch(queryString, {method, headers}).then(done(queryString)).catch(fail)
-        return
-    }
 
-    fetch("?", {method, headers, body: form}).then(done(""))
+        fetch("?", {method, headers, body: formData}).then(done("", state))
+    }
 }

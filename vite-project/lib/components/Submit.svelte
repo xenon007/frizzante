@@ -19,7 +19,8 @@
 </style>
 
 <script>
-    import {onsubmit} from "../scripts/onsubmit.js";
+    import {update} from "../scripts/update.js";
+    import {getContext} from "svelte";
 
     /**
      * @typedef Props
@@ -38,7 +39,7 @@
     } = $props()
 
 </script>
-<form {method} action="?" {onsubmit}>
+<form {method} action="?" onsubmit={update(getContext("data"))}>
     {#each Object.keys(form) as key}
         {@const value = form[key]}
         <input type="hidden" name="{key}" value="{value}">
