@@ -15,10 +15,16 @@ type Sql struct {
 	errorHandler func(error)
 }
 
+// SqlCreate creates a sql wrapper.
 func SqlCreate() *Sql {
 	return &Sql{
 		errorHandler: func(error) {},
 	}
+}
+
+// SqlWithDatabase sets the sql database.
+func SqlWithDatabase(self *Sql, database *sql.DB) {
+	self.database = database
 }
 
 // SqlWithErrorReceiver sets the error receiver.
