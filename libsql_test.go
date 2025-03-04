@@ -15,7 +15,7 @@ func TestSqlCreate(test *testing.T) {
 func TestSqlWithErrorReceiver(test *testing.T) {
 	sql := SqlCreate()
 	var receivedError error
-	SqlWithErrorReceiver(sql, func(err error) {
+	SqlRecallError(sql, func(err error) {
 		receivedError = err
 	})
 	SqlNotifyError(sql, errors.New("test error"))

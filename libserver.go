@@ -701,6 +701,10 @@ func ServerRecallError(self *Server, callback func(err error)) {
 //
 // Recall errors with ServerRecallError.
 func ServerNotifyError(self *Server, err error) {
+	if nil == self.recallError {
+		return
+	}
+
 	self.recallError(err)
 }
 

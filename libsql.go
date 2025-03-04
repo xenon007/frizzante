@@ -11,14 +11,14 @@ func sqlFindNextFallback(dest ...any) bool { return false }
 func sqlFindCloseFallback()                {}
 
 type Sql struct {
-	database     *sql.DB
-	errorHandler func(error)
+	database    *sql.DB
+	recallError func(error)
 }
 
 // SqlCreate creates a sql wrapper.
 func SqlCreate() *Sql {
 	return &Sql{
-		errorHandler: func(error) {},
+		recallError: func(error) {},
 	}
 }
 
@@ -27,14 +27,19 @@ func SqlWithDatabase(self *Sql, database *sql.DB) {
 	self.database = database
 }
 
-// SqlWithErrorReceiver sets the error receiver.
-func SqlWithErrorReceiver(self *Sql, callback func(err error)) {
-	self.errorHandler = callback
+// SqlRecallError recalls errors notified by SqlNotifyError.
+func SqlRecallError(self *Sql, callback func(err error)) {
+	self.recallError = callback
 }
 
-// SqlNotifyError notifies the server of an error.
+// SqlNotifyError notifies an error.
+//
+// Recall errors with SqlRecallError.
 func SqlNotifyError(self *Sql, err error) {
-	self.errorHandler(err)
+	if nil == self.recallError {
+		return
+	}
+	self.recallError(err)
 }
 
 // SqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
