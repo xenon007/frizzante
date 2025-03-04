@@ -174,9 +174,14 @@ func prepareSveltePagesStart() error {
 		return linkSvelteError
 	}
 
-	updateSvelte, updateSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/scripts/update.js")
-	if updateSvelteError != nil {
-		return updateSvelteError
+	updateJs, updateJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/scripts/update.js")
+	if updateJsError != nil {
+		return updateJsError
+	}
+
+	uuidJs, uuidJsError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/scripts/uuid.js")
+	if uuidJsError != nil {
+		return uuidJsError
 	}
 
 	if !Exists(".frizzante/vite-project") {
@@ -230,7 +235,12 @@ func prepareSveltePagesStart() error {
 		return err
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/scripts/update.js", updateSvelte, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/scripts/update.js", updateJs, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(".frizzante/vite-project/lib/scripts/uuid.js", uuidJs, os.ModePerm)
 	if err != nil {
 		return err
 	}

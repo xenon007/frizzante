@@ -63,6 +63,7 @@ export function update(state) {
             for (const [key, value] of formData) {
                 data.append(key, value.toString());
             }
+
             const search = data.toString()
             const queryString = `?${search}`
             fetch(queryString, {method, headers}).then(done(queryString, state)).catch(fail)
