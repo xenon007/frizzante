@@ -50,7 +50,13 @@ func SqlExecute(self *Sql, query string, props ...any) *sql.Result {
 		return nil
 	}
 
-	result, execError := transaction.Exec(query, props...)
+	statement, statementError := transaction.Prepare(query)
+	if nil != statementError {
+		SqlNotifyError(self, statementError)
+		return nil
+	}
+
+	result, execError := statement.Exec(props...)
 	if execError != nil {
 		SqlNotifyError(self, execError)
 		rollbackError := transaction.Rollback()
@@ -84,7 +90,14 @@ func SqlFind(self *Sql, query string, props ...any) (next func(dest ...any) bool
 	next = sqlFindNextFallback
 	close = sqlFindCloseFallback
 
-	rows, queryError := self.database.Query(query, props...)
+	statement, statementError := self.database.Prepare(query)
+	if nil != statementError {
+		SqlNotifyError(self, statementError)
+		return
+	}
+	defer statement.Close()
+
+	rows, queryError := statement.Query(props...)
 	if queryError != nil {
 		SqlNotifyError(self, queryError)
 		return
@@ -95,8 +108,9 @@ func SqlFind(self *Sql, query string, props ...any) (next func(dest ...any) bool
 			return false
 		}
 
-		err := rows.Scan(dest...)
-		if err != nil {
+		scanError := rows.Scan(dest...)
+		if scanError != nil {
+			SqlNotifyError(self, scanError)
 			return false
 		}
 		return true
