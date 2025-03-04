@@ -174,9 +174,9 @@ func prepareSveltePagesStart() error {
 		return linkSvelteError
 	}
 
-	linkOnsubmit, linkOnsubmitError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/scripts/onsubmit.js")
-	if linkOnsubmitError != nil {
-		return linkOnsubmitError
+	updateSvelte, updateSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/scripts/update.js")
+	if updateSvelteError != nil {
+		return updateSvelteError
 	}
 
 	if !Exists(".frizzante/vite-project") {
@@ -230,7 +230,7 @@ func prepareSveltePagesStart() error {
 		return err
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/scripts/onsubmit.js", linkOnsubmit, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/scripts/update.js", updateSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
