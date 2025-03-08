@@ -128,7 +128,7 @@ func SqlFind(self *Sql, query string, props ...any) (next func(dest ...any) bool
 func SqlCreateTable[Table any](self *Sql) {
 	var query strings.Builder
 	t := reflect.TypeFor[Table]()
-	query.WriteString(fmt.Sprintf("create table `%s`(\n", t.Name()))
+	query.WriteString(fmt.Sprintf("create table \"%s\" (\n", t.Name()))
 	count := t.NumField()
 	for i := 0; i < count; i++ {
 		field := t.Field(i)
@@ -136,9 +136,9 @@ func SqlCreateTable[Table any](self *Sql) {
 		if i > 0 {
 			query.WriteString(",\n")
 		}
-		query.WriteString(fmt.Sprintf("`%s` %s", field.Name, rules))
+		query.WriteString(fmt.Sprintf("\"%s\" %s", field.Name, rules))
 	}
-	query.WriteString(");")
+	query.WriteString("\n);")
 	_, err := self.database.Exec(query.String())
 	if err != nil {
 		SqlNotifyError(self, err)
