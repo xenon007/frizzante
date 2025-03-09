@@ -27,6 +27,7 @@ type Sql struct {
 func SqlCreate() *Sql {
 	return &Sql{
 		recallError: func(error) {},
+		dialect:     SqlDialectMysql,
 	}
 }
 
@@ -146,8 +147,6 @@ func SqlDropTable[Table any](self *Sql) {
 		query.WriteString(fmt.Sprintf("drop table if not exists `%s`;", t.Name()))
 	case SqlDialectPostgresql:
 		query.WriteString(fmt.Sprintf("drop table if not exists \"%s\";", t.Name()))
-	default:
-		query.WriteString(fmt.Sprintf("drop table if not exists `%s`;", t.Name()))
 	}
 	_, err := self.database.Exec(query.String())
 	if err != nil {
@@ -168,8 +167,6 @@ func SqlCreateTable[Table any](self *Sql) {
 		query.WriteString(fmt.Sprintf("create table if not exists `%s` ", structName))
 	case SqlDialectPostgresql:
 		query.WriteString(fmt.Sprintf("create table if not exists \"%s\" ", structName))
-	default:
-		query.WriteString(fmt.Sprintf("create table if not exists `%s` ", structName))
 	}
 	query.WriteString("(\n")
 	count := t.NumField()
@@ -195,8 +192,6 @@ func SqlCreateTable[Table any](self *Sql) {
 				query.WriteString(fmt.Sprintf("`%s` %s", fieldName, rules))
 			case SqlDialectPostgresql:
 				query.WriteString(fmt.Sprintf("\"%s\" %s", fieldName, rules))
-			default:
-				query.WriteString(fmt.Sprintf("`%s` %s", fieldName, rules))
 			}
 
 			continue
@@ -214,8 +209,6 @@ func SqlCreateTable[Table any](self *Sql) {
 					meta.WriteString(fmt.Sprintf("foreign key (`%s`) references `%s` (`%s`)", fieldOfFieldName, structName, fieldName))
 				case SqlDialectPostgresql:
 					meta.WriteString(fmt.Sprintf("foreign key (\"%s\") references \"%s\" (\"%s\")", fieldOfFieldName, structName, fieldName))
-				default:
-					meta.WriteString(fmt.Sprintf("foreign key (`%s`) references `%s` (`%s`)", fieldOfFieldName, structName, fieldName))
 				}
 
 				break
@@ -247,8 +240,6 @@ func SqlCreateTable[Table any](self *Sql) {
 		meta.WriteString(fmt.Sprintf("primary key (`%s`)", expectedIdentifier))
 	case SqlDialectPostgresql:
 		meta.WriteString(fmt.Sprintf("primary key (\"%s\")", expectedIdentifier))
-	default:
-		meta.WriteString(fmt.Sprintf("primary key (`%s`)", expectedIdentifier))
 	}
 
 	query.WriteString(",\n")
