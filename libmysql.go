@@ -7,75 +7,75 @@ import (
 	"strings"
 )
 
-func sqlFindNextFallback(dest ...any) bool { return false }
-func sqlFindCloseFallback()                {}
+func mysqlFindNextFallback(dest ...any) bool { return false }
+func mysqlFindCloseFallback()                {}
 
-type Sql struct {
+type Mysql struct {
 	database    *sql.DB
 	recallError func(error)
 }
 
-// SqlCreate creates a sql wrapper.
-func SqlCreate() *Sql {
-	return &Sql{
+// MysqlCreate creates a sql wrapper.
+func MysqlCreate() *Mysql {
+	return &Mysql{
 		recallError: func(error) {},
 	}
 }
 
 // SqlWithDatabase sets the sql database.
-func SqlWithDatabase(self *Sql, database *sql.DB) {
+func SqlWithDatabase(self *Mysql, database *sql.DB) {
 	self.database = database
 }
 
-// SqlRecallError recalls errors notified by SqlNotifyError.
-func SqlRecallError(self *Sql, callback func(err error)) {
+// MysqlRecallError recalls errors notified by MysqlNotifyError.
+func MysqlRecallError(self *Mysql, callback func(err error)) {
 	self.recallError = callback
 }
 
-// SqlNotifyError notifies an error.
+// MysqlNotifyError notifies an error.
 //
-// Recall errors with SqlRecallError.
-func SqlNotifyError(self *Sql, err error) {
+// Recall errors with MysqlRecallError.
+func MysqlNotifyError(self *Mysql, err error) {
 	if nil == self.recallError {
 		return
 	}
 	self.recallError(err)
 }
 
-// SqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
-func SqlExecute(self *Sql, query string, props ...any) *sql.Result {
+// MysqlExecute executes sql queries that don't return rows, typically INSERT, UPDATE, DELETE queries.
+func MysqlExecute(self *Mysql, query string, props ...any) *sql.Result {
 	transaction, transactionError := self.database.Begin()
 	if transactionError != nil {
-		SqlNotifyError(self, transactionError)
+		MysqlNotifyError(self, transactionError)
 		return nil
 	}
 
 	statement, statementError := transaction.Prepare(query)
 	if nil != statementError {
-		SqlNotifyError(self, statementError)
+		MysqlNotifyError(self, statementError)
 		return nil
 	}
 
 	result, execError := statement.Exec(props...)
 	if execError != nil {
-		SqlNotifyError(self, execError)
+		MysqlNotifyError(self, execError)
 		rollbackError := transaction.Rollback()
 		if rollbackError != nil {
-			SqlNotifyError(self, rollbackError)
+			MysqlNotifyError(self, rollbackError)
 		}
 		return nil
 	}
 
 	commitError := transaction.Commit()
 	if commitError != nil {
-		SqlNotifyError(self, commitError)
+		MysqlNotifyError(self, commitError)
 		return nil
 	}
 
 	return &result
 }
 
-// SqlFind executes a sql query that returns rows, typically a SELECT query.
+// MysqlFind executes a sql query that returns rows, typically a SELECT query.
 //
 // It returns a next function and a close function.
 //
@@ -86,20 +86,20 @@ func SqlExecute(self *Sql, query string, props ...any) *sql.Result {
 // Use close to close the database context and prevent any subsequent enumerations.
 //
 // Whenever next returns false, the database context is closed automatically as if calling close.
-func SqlFind(self *Sql, query string, props ...any) (next func(dest ...any) bool, close func()) {
-	next = sqlFindNextFallback
-	close = sqlFindCloseFallback
+func MysqlFind(self *Mysql, query string, props ...any) (next func(dest ...any) bool, close func()) {
+	next = mysqlFindNextFallback
+	close = mysqlFindCloseFallback
 
 	statement, statementError := self.database.Prepare(query)
 	if nil != statementError {
-		SqlNotifyError(self, statementError)
+		MysqlNotifyError(self, statementError)
 		return
 	}
 	defer statement.Close()
 
 	rows, queryError := statement.Query(props...)
 	if queryError != nil {
-		SqlNotifyError(self, queryError)
+		MysqlNotifyError(self, queryError)
 		return
 	}
 
@@ -110,7 +110,7 @@ func SqlFind(self *Sql, query string, props ...any) (next func(dest ...any) bool
 
 		scanError := rows.Scan(dest...)
 		if scanError != nil {
-			SqlNotifyError(self, scanError)
+			MysqlNotifyError(self, scanError)
 			return false
 		}
 		return true
@@ -118,17 +118,17 @@ func SqlFind(self *Sql, query string, props ...any) (next func(dest ...any) bool
 	close = func() {
 		err := rows.Close()
 		if err != nil {
-			SqlNotifyError(self, err)
+			MysqlNotifyError(self, err)
 		}
 	}
 	return
 }
 
-// SqlCreateTable creates a table from a type.
-func SqlCreateTable[Table any](self *Sql) {
+// MysqlCreateTable creates a table from a type.
+func MysqlCreateTable[Table any](self *Mysql) {
 	var query strings.Builder
 	t := reflect.TypeFor[Table]()
-	query.WriteString(fmt.Sprintf("create table \"%s\" (\n", t.Name()))
+	query.WriteString(fmt.Sprintf("create table `%s` (\n", t.Name()))
 	count := t.NumField()
 	for i := 0; i < count; i++ {
 		field := t.Field(i)
@@ -136,11 +136,11 @@ func SqlCreateTable[Table any](self *Sql) {
 		if i > 0 {
 			query.WriteString(",\n")
 		}
-		query.WriteString(fmt.Sprintf("\"%s\" %s", field.Name, rules))
+		query.WriteString(fmt.Sprintf("`%s` %s", field.Name, rules))
 	}
 	query.WriteString("\n);")
 	_, err := self.database.Exec(query.String())
 	if err != nil {
-		SqlNotifyError(self, err)
+		MysqlNotifyError(self, err)
 	}
 }
