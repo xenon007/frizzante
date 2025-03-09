@@ -144,9 +144,9 @@ func SqlDropTable[Table any](self *Sql) {
 	t := reflect.TypeFor[Table]()
 	switch self.dialect {
 	case SqlDialectMysql:
-		query.WriteString(fmt.Sprintf("drop table if not exists `%s`;", t.Name()))
+		query.WriteString(fmt.Sprintf("drop table if exists `%s`;", t.Name()))
 	case SqlDialectPostgresql:
-		query.WriteString(fmt.Sprintf("drop table if not exists \"%s\";", t.Name()))
+		query.WriteString(fmt.Sprintf("drop table if exists \"%s\";", t.Name()))
 	}
 	_, err := self.database.Exec(query.String())
 	if err != nil {
@@ -157,11 +157,10 @@ func SqlDropTable[Table any](self *Sql) {
 // SqlCreateTable creates a table from a type if it doesn't already exist.
 func SqlCreateTable[Table any](self *Sql) {
 	var query strings.Builder
-	var meta strings.Builder
 	t := reflect.TypeFor[Table]()
 	structName := t.Name()
-	expectedIdentifier := structName + "Id"
-	hasIdentifier := false
+	expectedId := "Id"
+	hasId := false
 	switch self.dialect {
 	case SqlDialectMysql:
 		query.WriteString(fmt.Sprintf("create table if not exists `%s` ", structName))
@@ -171,19 +170,34 @@ func SqlCreateTable[Table any](self *Sql) {
 	query.WriteString("(\n")
 	count := t.NumField()
 	for i := 0; i < count; i++ {
-		if i > 0 {
-			query.WriteString(",\n")
-		}
 		field := t.Field(i)
 		fieldName := field.Name
 		fieldType := field.Type
 		fieldTypeName := fieldType.Name()
-		fieldCount := fieldType.NumField()
-		fieldIsComplex := fieldCount > 0
+		fieldCount := 0
+		fieldIsComplex := false
+
+		if "" == fieldTypeName {
+			SqlNotifyError(self, fmt.Errorf("failed to create table `%s` because field `%s` is a pointer, which is not allowed", structName, fieldName))
+			return
+		}
+
+		if "string" != fieldTypeName &&
+			"int" != fieldTypeName &&
+			"int8" != fieldTypeName &&
+			"int16" != fieldTypeName &&
+			"int32" != fieldTypeName &&
+			"int64" != fieldTypeName &&
+			"float32" != fieldTypeName &&
+			"float64" != fieldTypeName &&
+			"bool" != fieldTypeName {
+			fieldCount = fieldType.NumField()
+			fieldIsComplex = true
+		}
 
 		if !fieldIsComplex {
-			if expectedIdentifier == fieldName {
-				hasIdentifier = true
+			if expectedId == fieldName {
+				hasId = true
 			}
 			rules := field.Tag.Get("sql")
 
@@ -194,42 +208,59 @@ func SqlCreateTable[Table any](self *Sql) {
 				query.WriteString(fmt.Sprintf("\"%s\" %s", fieldName, rules))
 			}
 
+			if i < count {
+				query.WriteString(",\n")
+			}
 			continue
 		}
 
-		expectedForeignIdentifier := fieldName + "Id"
-
+		expectedForeignId := "Id"
+		hasForeignId := false
 		for j := 0; j < fieldCount; j++ {
-			fieldOfField := fieldType.Field(j)
-			fieldOfFieldName := fieldOfField.Name
-			if expectedForeignIdentifier == fieldOfFieldName {
+			fieldForeign := fieldType.Field(j)
+			if expectedForeignId == fieldForeign.Name {
+				rules := fieldForeign.Tag.Get("sql")
+				switch self.dialect {
+				case SqlDialectMysql:
+					query.WriteString(fmt.Sprintf("`%s` %s", fieldName, rules))
+				case SqlDialectPostgresql:
+					query.WriteString(fmt.Sprintf("\"%s\" %s", fieldName, rules))
+				}
+
+				query.WriteString(",\n")
 
 				switch self.dialect {
 				case SqlDialectMysql:
-					meta.WriteString(fmt.Sprintf("foreign key (`%s`) references `%s` (`%s`)", fieldOfFieldName, structName, fieldName))
+					query.WriteString(fmt.Sprintf("foreign key (`%s`) references `%s` (`%s`)", fieldName, field.Type.Name(), expectedForeignId))
 				case SqlDialectPostgresql:
-					meta.WriteString(fmt.Sprintf("foreign key (\"%s\") references \"%s\" (\"%s\")", fieldOfFieldName, structName, fieldName))
+					query.WriteString(fmt.Sprintf("foreign key (\"%s\") references \"%s\" (\"%s\")", fieldName, field.Type.Name(), expectedForeignId))
 				}
-
+				hasForeignId = true
 				break
 			}
 		}
-		SqlNotifyError(self,
-			fmt.Errorf(
-				"field `%s` is a `%s` structure and is expected to have a `%s` identifier field, but it doesn't",
-				fieldName,
-				fieldTypeName,
-				expectedForeignIdentifier,
-			),
-		)
+		if !hasForeignId {
+			SqlNotifyError(self,
+				fmt.Errorf(
+					"field `%s` of type `%s` is expected to have an identifier field named `%s`, but it doesn't",
+					fieldName,
+					fieldTypeName,
+					expectedForeignId,
+				),
+			)
+		}
+
+		if i < count {
+			query.WriteString(",\n")
+		}
 	}
 
-	if !hasIdentifier {
+	if !hasId {
 		SqlNotifyError(self,
 			fmt.Errorf(
-				"structure `%s` is expected to have a `%s` identifier field, but it doesn't",
+				"structure `%s` is expected to have an identifier field named `%s`, but it doesn't",
 				structName,
-				expectedIdentifier,
+				expectedId,
 			),
 		)
 		return
@@ -237,13 +268,10 @@ func SqlCreateTable[Table any](self *Sql) {
 
 	switch self.dialect {
 	case SqlDialectMysql:
-		meta.WriteString(fmt.Sprintf("primary key (`%s`)", expectedIdentifier))
+		query.WriteString(fmt.Sprintf("primary key (`%s`)", expectedId))
 	case SqlDialectPostgresql:
-		meta.WriteString(fmt.Sprintf("primary key (\"%s\")", expectedIdentifier))
+		query.WriteString(fmt.Sprintf("primary key (\"%s\")", expectedId))
 	}
-
-	query.WriteString(",\n")
-	query.WriteString(meta.String())
 
 	query.WriteString("\n);")
 	_, err := self.database.Exec(query.String())
