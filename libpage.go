@@ -31,7 +31,7 @@ func PageWithData(self *Page, key string, value any) {
 	self.data[key] = value
 }
 
-var noScriptPattern = regexp.MustCompile("<script.*>.*</script>")
+var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
 var pagesToPaths = map[string]string{}
 
 type svelteRouterProps struct {

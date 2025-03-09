@@ -607,7 +607,9 @@ func routeCreateWithPage(
 				return
 			}
 
-			SendPage(response, page)
+			if "" == response.header.Get("Location") {
+				SendPage(response, page)
+			}
 		},
 		mount: func(patternLocal string) {
 			pattern = patternLocal
@@ -715,10 +717,36 @@ func SendRedirect(self *Response, location string, statusCode int) {
 	SendEcho(self, "")
 }
 
+var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
+
+// SendRedirectToPage redirects the request to a page.
+func SendRedirectToPage(self *Response, pageId string, pathFields map[string]string) {
+	p, pathFound := pagesToPaths[pageId]
+	if !pathFound {
+		ServerNotifyError(self.server, fmt.Errorf("redirect to page `%s` failed because page id `%s` is unknown", pageId, pageId))
+		return
+	}
+
+	location := string(
+		pathFieldRegex.ReplaceAllFunc(
+			[]byte(p),
+			func(i []byte) []byte {
+				if nil == pathFields {
+					return []byte{}
+				}
+				key := string(i[1 : len(i)-1])
+				return []byte(pathFields[key])
+			},
+		),
+	)
+
+	SendRedirect(self, location, 302)
+}
+
 // SendRedirectToSecure tries to redirect the request to the https server.
 //
 // When the request is already secure, SendRedirectToSecure returns false.
-func SendRedirectToSecure(self *Response, statusCode int) bool {
+func SendRedirectToSecure(self *Response) bool {
 	request := self.request
 	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
 		return false
@@ -728,7 +756,7 @@ func SendRedirectToSecure(self *Response, statusCode int) bool {
 	secureSuffix := fmt.Sprintf(":%d", request.server.securePort)
 	secureHost := strings.Replace(request.HttpRequest.Host, insecureSuffix, secureSuffix, 1)
 	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.HttpRequest.RequestURI)
-	SendRedirect(self, secureLocation, statusCode)
+	SendRedirect(self, secureLocation, 302)
 	return true
 }
 
