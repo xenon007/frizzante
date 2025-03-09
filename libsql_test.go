@@ -6,19 +6,19 @@ import (
 )
 
 func TestSqlCreate(test *testing.T) {
-	sql := MysqlCreate()
+	sql := SqlCreate()
 	if nil == sql {
 		test.Fatal("could not create sql")
 	}
 }
 
 func TestSqlWithErrorReceiver(test *testing.T) {
-	sql := MysqlCreate()
+	sql := SqlCreate()
 	var receivedError error
-	MysqlRecallError(sql, func(err error) {
+	SqlRecallError(sql, func(err error) {
 		receivedError = err
 	})
-	MysqlNotifyError(sql, errors.New("test error"))
+	SqlNotifyError(sql, errors.New("test error"))
 	if "test error" != receivedError.Error() {
 		test.Fatal("could not notify sql error")
 	}
