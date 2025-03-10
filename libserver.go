@@ -658,6 +658,8 @@ func serverMap(
 			lockedStatusAndHeader: false,
 			statusCode:            200,
 			header:                &httpHeader,
+			eventName:             "",
+			eventId:               1,
 		}
 
 		request.response = &response
@@ -692,6 +694,8 @@ type Response struct {
 	statusCode            int
 	header                *http.Header
 	webSocket             *websocket.Conn
+	eventName             string
+	eventId               int64
 }
 
 // ServerRecallError recalls errors notified by ServerNotifyError.
@@ -801,6 +805,52 @@ func SendCookie(self *Response, key string, value string) {
 	SendHeader(self, "set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
 }
 
+func sendEventContent(self *Response, content []byte) {
+	header := fmt.Sprintf("id: %d\r\nevent: %s\r\n", self.eventId, self.eventName)
+
+	_, writeEventError := (*self.writer).Write([]byte(header))
+	if writeEventError != nil {
+		ServerNotifyError(self.server, writeEventError)
+		return
+	}
+
+	for _, line := range bytes.Split(content, []byte("\r\n")) {
+		_, writeEventError = (*self.writer).Write([]byte("data: "))
+		if writeEventError != nil {
+			ServerNotifyError(self.server, writeEventError)
+			return
+		}
+
+		_, writeEventError = (*self.writer).Write(line)
+		if writeEventError != nil {
+			ServerNotifyError(self.server, writeEventError)
+			return
+		}
+
+		_, writeEventError = (*self.writer).Write([]byte("\r\n"))
+		if writeEventError != nil {
+			ServerNotifyError(self.server, writeEventError)
+			return
+		}
+	}
+
+	_, writeEventError = (*self.writer).Write([]byte("\r\n"))
+	if writeEventError != nil {
+		ServerNotifyError(self.server, writeEventError)
+		return
+	}
+
+	flusher, flushedOk := (*self.writer).(http.Flusher)
+	if !flushedOk {
+		ServerNotifyError(self.server, errors.New("could not retrieve flusher"))
+		return
+	}
+
+	flusher.Flush()
+
+	self.eventId++
+}
+
 // SendContent sends binary safe content.
 //
 // If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
@@ -824,9 +874,14 @@ func SendContent(self *Response, content []byte) {
 		return
 	}
 
-	_, err := (*self.writer).Write(content)
-	if err != nil {
-		ServerNotifyError(self.server, err)
+	if "" != self.eventName {
+		sendEventContent(self, content)
+		return
+	}
+
+	_, writeError := (*self.writer).Write(content)
+	if writeError != nil {
+		ServerNotifyError(self.server, writeError)
 		return
 	}
 }
@@ -859,14 +914,28 @@ func SendJson(self *Response, payload any) {
 		ServerNotifyError(self.server, marshalError)
 	}
 
-	if nil == self.webSocket {
-		contentType := self.header.Get("Content-Type")
-		if "" == contentType {
-			self.header.Set("Content-Type", "application/json")
-		}
+	if "" == self.header.Get("Content-Type") {
+		self.header.Set("Content-Type", "application/json")
 	}
 
 	SendContent(self, content)
+}
+
+type EventPicker = func(name string)
+
+// SendEvents sends events to the client.
+//
+// You can listen to these events with EventSource.
+//
+// See https://www.w3schools.com/html/html5_serversentevents.asp
+func SendEvents(self *Response, producer func(event EventPicker)) {
+	SendHeader(self, "Cache-Control", "no-store")
+	SendHeader(self, "Content-Type", "text/event-stream")
+	SendHeader(self, "Connection", "keep-alive")
+	self.eventName = "message"
+	producer(func(name string) {
+		self.eventName = name
+	})
 }
 
 // VerifyContentType checks if the incoming request has any of the given content-types.
@@ -918,8 +987,36 @@ func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
 		return
 	}
 
-	SendHeader(self, "Content-Type", Mime(fileName))
-	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	if self.webSocket != nil {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
+		if writeError != nil {
+			ServerNotifyError(self.server, writeError)
+		}
+		return
+	}
+
+	if "" != self.eventName {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		sendEventContent(self, content)
+		return
+	}
+
+	if "" == self.header.Get("Content-Type") {
+		SendHeader(self, "Content-Type", Mime(fileName))
+	}
+
+	if "" == self.header.Get("Content-Length") {
+		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	}
 	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
@@ -943,8 +1040,36 @@ func SendEmbeddedFileOrElse(self *Response, orElse func()) {
 		return
 	}
 
-	SendHeader(self, "Content-Type", Mime(fileName))
-	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	if self.webSocket != nil {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
+		if writeError != nil {
+			ServerNotifyError(self.server, writeError)
+		}
+		return
+	}
+
+	if "" != self.eventName {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		sendEventContent(self, content)
+		return
+	}
+
+	if "" == self.header.Get("Content-Type") {
+		SendHeader(self, "Content-Type", Mime(fileName))
+	}
+
+	if "" == self.header.Get("Content-Length") {
+		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	}
 	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
@@ -973,8 +1098,36 @@ func SendFileOrIndexOrElse(self *Response, orElse func()) {
 		return
 	}
 
-	SendHeader(self, "Content-Type", Mime(fileName))
-	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	if self.webSocket != nil {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
+		if writeError != nil {
+			ServerNotifyError(self.server, writeError)
+		}
+		return
+	}
+
+	if "" != self.eventName {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		sendEventContent(self, content)
+		return
+	}
+
+	if "" == self.header.Get("Content-Type") {
+		SendHeader(self, "Content-Type", Mime(fileName))
+	}
+
+	if "" == self.header.Get("Content-Length") {
+		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	}
 	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
@@ -994,8 +1147,36 @@ func SendFileOrElse(self *Response, orElse func()) {
 		return
 	}
 
-	SendHeader(self, "Content-Type", Mime(fileName))
-	SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	if self.webSocket != nil {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
+		if writeError != nil {
+			ServerNotifyError(self.server, writeError)
+		}
+		return
+	}
+
+	if "" != self.eventName {
+		content, readError := io.ReadAll(reader)
+		if readError != nil {
+			ServerNotifyError(self.server, readError)
+			return
+		}
+		sendEventContent(self, content)
+		return
+	}
+
+	if "" == self.header.Get("Content-Type") {
+		SendHeader(self, "Content-Type", Mime(fileName))
+	}
+
+	if "" == self.header.Get("Content-Length") {
+		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
+	}
 	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
 }
 
@@ -1058,7 +1239,10 @@ func SendPage(self *Response, page *Page) {
 		return
 	}
 
-	SendHeader(self, "Content-Type", "text/html")
+	if "" == self.header.Get("Content-Type") {
+		SendHeader(self, "Content-Type", "text/html")
+	}
+
 	SendEcho(self, content)
 }
 
