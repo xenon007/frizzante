@@ -886,6 +886,52 @@ func VerifyAccept(self *Request, contentTypes ...string) bool {
 	return false
 }
 
+func sendEventContent(self *Response, content []byte) {
+	header := fmt.Sprintf("id: %d\r\nevent: %s\r\n", self.eventId, self.eventName)
+
+	_, writeEventError := (*self.writer).Write([]byte(header))
+	if writeEventError != nil {
+		NotifierSendError(self.server.notifier, writeEventError)
+		return
+	}
+
+	for _, line := range bytes.Split(content, []byte("\r\n")) {
+		_, writeEventError = (*self.writer).Write([]byte("data: "))
+		if writeEventError != nil {
+			NotifierSendError(self.server.notifier, writeEventError)
+			return
+		}
+
+		_, writeEventError = (*self.writer).Write(line)
+		if writeEventError != nil {
+			NotifierSendError(self.server.notifier, writeEventError)
+			return
+		}
+
+		_, writeEventError = (*self.writer).Write([]byte("\r\n"))
+		if writeEventError != nil {
+			NotifierSendError(self.server.notifier, writeEventError)
+			return
+		}
+	}
+
+	_, writeEventError = (*self.writer).Write([]byte("\r\n"))
+	if writeEventError != nil {
+		NotifierSendError(self.server.notifier, writeEventError)
+		return
+	}
+
+	flusher, flushedOk := (*self.writer).(http.Flusher)
+	if !flushedOk {
+		NotifierSendError(self.server.notifier, errors.New("could not retrieve flusher"))
+		return
+	}
+
+	flusher.Flush()
+
+	self.eventId++
+}
+
 // SendEmbeddedFileOrIndexOrElse sends the embedded file requested by the client,
 // or the closest index.html embedded file, or else falls back.
 func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
@@ -1228,50 +1274,4 @@ func ServerRoutePage(
 	),
 ) {
 	serverMap(self, pattern, routeCreateWithPage(pageId, callback))
-}
-
-func sendEventContent(self *Response, content []byte) {
-	header := fmt.Sprintf("id: %d\r\nevent: %s\r\n", self.eventId, self.eventName)
-
-	_, writeEventError := (*self.writer).Write([]byte(header))
-	if writeEventError != nil {
-		NotifierSendError(self.server.notifier, writeEventError)
-		return
-	}
-
-	for _, line := range bytes.Split(content, []byte("\r\n")) {
-		_, writeEventError = (*self.writer).Write([]byte("data: "))
-		if writeEventError != nil {
-			NotifierSendError(self.server.notifier, writeEventError)
-			return
-		}
-
-		_, writeEventError = (*self.writer).Write(line)
-		if writeEventError != nil {
-			NotifierSendError(self.server.notifier, writeEventError)
-			return
-		}
-
-		_, writeEventError = (*self.writer).Write([]byte("\r\n"))
-		if writeEventError != nil {
-			NotifierSendError(self.server.notifier, writeEventError)
-			return
-		}
-	}
-
-	_, writeEventError = (*self.writer).Write([]byte("\r\n"))
-	if writeEventError != nil {
-		NotifierSendError(self.server.notifier, writeEventError)
-		return
-	}
-
-	flusher, flushedOk := (*self.writer).(http.Flusher)
-	if !flushedOk {
-		NotifierSendError(self.server.notifier, errors.New("could not retrieve flusher"))
-		return
-	}
-
-	flusher.Flush()
-
-	self.eventId++
 }
