@@ -164,12 +164,12 @@ func prepareSveltePagesStart() error {
 		return renderServerJsError
 	}
 
-	submitSvelte, submitSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/Submit.svelte")
+	submitSvelte, submitSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/submit.svelte")
 	if submitSvelteError != nil {
 		return submitSvelteError
 	}
 
-	linkSvelte, linkSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/Link.svelte")
+	linkSvelte, linkSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/link.svelte")
 	if linkSvelteError != nil {
 		return linkSvelteError
 	}
@@ -225,12 +225,12 @@ func prepareSveltePagesStart() error {
 		}
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/components/Submit.svelte", submitSvelte, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/components/submit.svelte", submitSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/components/Link.svelte", linkSvelte, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/components/link.svelte", linkSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
