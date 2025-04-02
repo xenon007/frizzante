@@ -5,7 +5,7 @@ import (
 )
 
 func TestSqlOperatorCreate(test *testing.T) {
-	sql := SqlOperatorCreate()
+	sql := SqlCreate()
 	if nil == sql {
 		test.Fatal("could not create sql")
 	}

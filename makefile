@@ -1,26 +1,6 @@
 test: configure
 	CGO_ENABLED=1 go test
 
-#build: configure
-#	CGO_ENABLED=1 go build -o bin/app .
-#
-#start: configure
-#	CGO_ENABLED=1 go run main.go
-#
-#dev: clean update
-#	go run github.com/razshare/frizzante/prepare
-#	which bin/air || curl -sSfL https://raw.githubusercontent.com/air-verse/air/master/install.sh | sh -s
-#	DEV=1 CGO_ENABLED=1 ./bin/air \
-#	--build.cmd "go build -o bin/app ." \
-#	--build.bin "bin/app" \
-#	--build.exclude_dir "out,tmp,bin,lib" \
-#	--build.exclude_regex "_test.go" \
-#	--build.include_ext "go,js,svelte,json" \
-#	--build.log "go-build-errors.log" & \
-#	make www-watch-server & \
-#	make www-watch-client & \
-#	wait
-
 www-watch-server:
 	bunx vite build --watch --ssr .frizzante/vite-project/render.server.js --outDir .dist/server && \
 	./node_modules/.bin/esbuild .dist/server/render.server.js --bundle --outfile=.dist/server/render.server.js --format=esm --allow-overwrite
@@ -29,7 +9,7 @@ www-watch-client:
 	bunx vite build --watch --outDir .dist/client
 
 configure: clean update
-	go run prepare/main.go
+	go run lib/prepare/main.go
 	make www-build-server & \
 	make www-build-client & \
 	wait
