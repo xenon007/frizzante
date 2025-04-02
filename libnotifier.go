@@ -1,33 +1,35 @@
 package frizzante
 
+import (
+	"fmt"
+	"os"
+)
+
 type Notifier struct {
-	errorListeners   []func(error)
-	messageListeners []func(string)
+	errorFile   *os.File
+	messageFile *os.File
 }
 
+// NotifierCreate creates a notifier.
 func NotifierCreate() *Notifier {
 	return &Notifier{
-		errorListeners:   []func(error){},
-		messageListeners: []func(string){},
+		errorFile:   os.Stderr,
+		messageFile: os.Stdout,
 	}
 }
 
-func NotifierReceiveError(self *Notifier, callback func(err error)) {
-	self.errorListeners = append(self.errorListeners, callback)
-}
-
-func NotifierReceiveMessage(self *Notifier, callback func(err string)) {
-	self.messageListeners = append(self.messageListeners, callback)
-}
-
+// NotifierSendError sends an error to the notifier.
 func NotifierSendError(self *Notifier, err error) {
-	for _, callback := range self.errorListeners {
-		callback(err)
+	_, errorLocal := self.errorFile.WriteString(err.Error() + "\n")
+	if errorLocal != nil {
+		fmt.Printf("notifier could not write to error file")
 	}
 }
 
+// NotifierSendMessage sends a message to the notifier.
 func NotifierSendMessage(self *Notifier, message string) {
-	for _, callback := range self.messageListeners {
-		callback(message)
+	_, errorLocal := self.messageFile.WriteString(message + "\n")
+	if errorLocal != nil {
+		fmt.Printf("notifier could not write to message file")
 	}
 }

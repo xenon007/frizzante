@@ -26,6 +26,7 @@ type Server struct {
 	hostName               string
 	port                   int
 	securePort             int
+	errorChunkSize         int
 	multipartFormMaxMemory int64
 	server                 *http.Server
 	mux                    *http.ServeMux
@@ -33,7 +34,6 @@ type Server struct {
 	readTimeout            time.Duration
 	writeTimeout           time.Duration
 	maxHeaderBytes         int
-	logger                 *log.Logger
 	certificate            string
 	certificateKey         string
 	notifier               *Notifier
@@ -61,6 +61,7 @@ func ServerCreate() *Server {
 
 	return &Server{
 		hostName:           "127.0.0.1",
+		errorChunkSize:     4096,
 		port:               8081,
 		securePort:         8383,
 		server:             nil,
@@ -69,7 +70,6 @@ func ServerCreate() *Server {
 		readTimeout:        10 * time.Second,
 		writeTimeout:       10 * time.Second,
 		maxHeaderBytes:     3 * MB,
-		logger:             log.Default(),
 		certificate:        "",
 		certificateKey:     "",
 		temporaryDirectory: ".temp",
@@ -178,11 +178,6 @@ func ServerWithWriteTimeout(self *Server, writeTimeout time.Duration) {
 // ServerWithMaxHeaderBytes sets the maximum allowed bytes in the header of the request.
 func ServerWithMaxHeaderBytes(self *Server, maxHeaderBytes int) {
 	self.maxHeaderBytes = maxHeaderBytes
-}
-
-// ServerWithLogger sets the server logger.
-func ServerWithLogger(self *Server, logger *log.Logger) {
-	self.logger = logger
 }
 
 // ServerWithCertificateAndKey sets the tls configuration.
@@ -326,6 +321,10 @@ func ServerTemporaryDirectoryClear(self *Server) {
 	}
 }
 
+func ServerWithErrorChunkSize(self *Server, errorChunkSize int) {
+	self.errorChunkSize = errorChunkSize
+}
+
 // ReceiveCookie reads the contents of a cookie from the message and returns the value.
 //
 // Compatible with web sockets.
@@ -442,12 +441,14 @@ func ReceiveContentType(self *Request) string {
 //
 // If the server fails to start, ServerStart panics.
 func ServerStart(self *Server) {
+	logger := log.New(self.notifier.errorFile, "<error>", log.Ltime|log.Llongfile)
+
 	self.server = &http.Server{
 		Handler:        self.mux,
 		ReadTimeout:    self.readTimeout,
 		WriteTimeout:   self.writeTimeout,
 		MaxHeaderBytes: self.maxHeaderBytes,
-		ErrorLog:       self.logger,
+		ErrorLog:       logger,
 	}
 
 	if !entryCreated {
@@ -464,11 +465,11 @@ func ServerStart(self *Server) {
 
 	go func() {
 		address := fmt.Sprintf("%s:%d", self.hostName, self.port)
-		self.logger.Printf("listening for requests at http://%s", address)
+		NotifierSendMessage(self.notifier, fmt.Sprintf("listening for requests at http://%s", address))
 		err := http.ListenAndServe(address, self.mux)
 		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
-				self.logger.Println("shutting down server")
+				NotifierSendMessage(self.notifier, "shutting down server")
 				return
 			}
 			panic(err.Error())
@@ -478,11 +479,11 @@ func ServerStart(self *Server) {
 	go func() {
 		secureAddress := fmt.Sprintf("%s:%d", self.hostName, self.securePort)
 		if "" != self.certificate && "" != self.certificateKey {
-			self.logger.Printf("listening for requests at https://%s", secureAddress)
+			NotifierSendMessage(self.notifier, fmt.Sprintf("listening for requests at https://%s", secureAddress))
 			err := http.ListenAndServeTLS(secureAddress, self.certificate, self.certificateKey, self.mux)
 			if err != nil {
 				if errors.Is(err, http.ErrServerClosed) {
-					self.logger.Println("shutting down server")
+					NotifierSendMessage(self.notifier, "shutting down server")
 					return
 				}
 				panic(err.Error())

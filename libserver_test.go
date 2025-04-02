@@ -2,7 +2,6 @@ package frizzante
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -62,16 +61,6 @@ func TestServerWithMaxHeaderBytes(test *testing.T) {
 	actual := server.maxHeaderBytes
 	if actual != expected {
 		test.Fatalf("server was expected to have max header bytes '%d', received '%d' instead", expected, actual)
-	}
-}
-
-func TestServerWithLogger(test *testing.T) {
-	server := ServerCreate()
-	expected := log.Default()
-	ServerWithLogger(server, expected)
-	actual := server.logger
-	if actual != expected {
-		test.Fatalf("server was expected to have default error logger")
 	}
 }
 
@@ -175,9 +164,6 @@ func TestServerWithRoute(test *testing.T) {
 			SendEcho(response, expected)
 		},
 	)
-	NotifierReceiveError(server.notifier, func(err error) {
-		test.Fatal(err)
-	})
 	go ServerStart(server)
 	defer ServerStop(server)
 
@@ -190,23 +176,6 @@ func TestServerWithRoute(test *testing.T) {
 
 	if actual != expected {
 		test.Fatalf("server was expected to respond with '%s', received '%s' instead", expected, actual)
-	}
-}
-
-func TestServerWithNotifier(test *testing.T) {
-	actual := ""
-	expected := "hello\nworld\n"
-	server := ServerCreate()
-	notifier := NotifierCreate()
-	ServerWithNotifier(server, notifier)
-	NotifierReceiveError(server.notifier, func(err error) {
-		actual += err.Error() + "\n"
-	})
-	NotifierSendError(server.notifier, fmt.Errorf("hello"))
-	NotifierSendError(server.notifier, fmt.Errorf("world"))
-
-	if actual != expected {
-		test.Fatalf("server was expected to log errors '%s', received '%s' instead", expected, actual)
 	}
 }
 
@@ -223,9 +192,6 @@ func TestSendStatus(test *testing.T) {
 			SendEcho(response, "Ok")
 		},
 	)
-	NotifierReceiveError(server.notifier, func(err error) {
-		test.Fatal(err)
-	})
 	go ServerStart(server)
 	defer ServerStop(server)
 
@@ -257,9 +223,6 @@ func TestSendHeader(test *testing.T) {
 			SendEcho(response, "{}")
 		},
 	)
-	NotifierReceiveError(server.notifier, func(err error) {
-		test.Fatal(err)
-	})
 	go ServerStart(server)
 	defer ServerStop(server)
 

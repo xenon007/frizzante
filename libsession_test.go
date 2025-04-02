@@ -27,9 +27,6 @@ func TestSessionStart(test *testing.T) {
 			SendEcho(response, "")
 		},
 	)
-	NotifierReceiveError(server.notifier, func(err error) {
-		test.Fatal(err)
-	})
 	go ServerStart(server)
 	defer ServerStop(server)
 
