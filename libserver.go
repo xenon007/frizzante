@@ -36,7 +36,7 @@ type Server struct {
 	logger                 *log.Logger
 	certificate            string
 	certificateKey         string
-	recallError            func(error)
+	notifier               *Notifier
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
 	webSocketUpgrader      *websocket.Upgrader
@@ -72,8 +72,8 @@ func ServerCreate() *Server {
 		logger:             log.Default(),
 		certificate:        "",
 		certificateKey:     "",
-		recallError:        func(error) {},
 		temporaryDirectory: ".temp",
+		notifier:           NotifierCreate(),
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -204,24 +204,29 @@ func ServerWithEmbeddedFileSystem(self *Server, embeddedFileSystem embed.FS) {
 	self.embeddedFileSystem = embeddedFileSystem
 }
 
+// ServerWithNotifier sets the server notifier.
+func ServerWithNotifier(self *Server, notifier *Notifier) {
+	self.notifier = notifier
+}
+
 // ServerTemporaryFileSave sets a temporary file.
 //
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
 func ServerTemporaryFileSave(self *Server, id string, contents string) {
 	if len(id) > 255 {
-		ServerNotifyError(self, fmt.Errorf("temporary file id is too long"))
+		NotifierSendError(self.notifier, fmt.Errorf("temporary file id is too long"))
 		return
 	}
 
 	if strings.Contains(id, "../") {
-		ServerNotifyError(self, fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id))
+		NotifierSendError(self.notifier, fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id))
 		return
 	}
 
 	if !Exists(self.temporaryDirectory) {
 		mkdirError := os.MkdirAll(self.temporaryDirectory, os.ModePerm)
 		if mkdirError != nil {
-			ServerNotifyError(self, mkdirError)
+			NotifierSendError(self.notifier, mkdirError)
 			return
 		}
 	}
@@ -236,7 +241,7 @@ func ServerTemporaryFileSave(self *Server, id string, contents string) {
 	if !Exists(directory) {
 		mkdirError := os.MkdirAll(directory, os.ModePerm)
 		if mkdirError != nil {
-			ServerNotifyError(self, mkdirError)
+			NotifierSendError(self.notifier, mkdirError)
 			return
 		}
 	}
@@ -246,14 +251,14 @@ func ServerTemporaryFileSave(self *Server, id string, contents string) {
 	if !ServerTemporaryFileExists(self, id) {
 		fileLocal, createError := os.Create(fileName)
 		if createError != nil {
-			ServerNotifyError(self, createError)
+			NotifierSendError(self.notifier, createError)
 			return
 		}
 		file = fileLocal
 	} else {
 		fileLocal, openError := os.Open(fileName)
 		if openError != nil {
-			ServerNotifyError(self, openError)
+			NotifierSendError(self.notifier, openError)
 			return
 		}
 		file = fileLocal
@@ -261,13 +266,13 @@ func ServerTemporaryFileSave(self *Server, id string, contents string) {
 
 	_, writeError := file.WriteString(contents)
 	if writeError != nil {
-		ServerNotifyError(self, writeError)
+		NotifierSendError(self.notifier, writeError)
 		return
 	}
 
 	closeError := file.Close()
 	if closeError != nil {
-		ServerNotifyError(self, closeError)
+		NotifierSendError(self.notifier, closeError)
 		return
 	}
 }
@@ -275,7 +280,7 @@ func ServerTemporaryFileSave(self *Server, id string, contents string) {
 // ServerTemporaryFile gets the contents o a temporary file.
 func ServerTemporaryFile(self *Server, id string) string {
 	if strings.Contains(id, "../") {
-		ServerNotifyError(self, fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id))
+		NotifierSendError(self.notifier, fmt.Errorf("invalid substring `../` detected in temporary file id `%s`", id))
 		return ""
 	}
 
@@ -286,7 +291,7 @@ func ServerTemporaryFile(self *Server, id string) string {
 	fileName += id
 	contents, err := os.ReadFile(fileName)
 	if err != nil {
-		ServerNotifyError(self, err)
+		NotifierSendError(self.notifier, err)
 		return ""
 	}
 	return string(contents)
@@ -297,7 +302,7 @@ func ServerTemporaryFile(self *Server, id string) string {
 // When id is longer than 255 characters, the operation will fail silently and the server will be notified.
 func ServerTemporaryFileExists(self *Server, id string) bool {
 	if len(id) > 255 {
-		ServerNotifyError(self, fmt.Errorf("temporary file id is too long"))
+		NotifierSendError(self.notifier, fmt.Errorf("temporary file id is too long"))
 		return false
 	}
 
@@ -317,7 +322,7 @@ func ServerTemporaryFileExists(self *Server, id string) bool {
 func ServerTemporaryDirectoryClear(self *Server) {
 	err := os.RemoveAll(self.temporaryDirectory)
 	if err != nil {
-		ServerNotifyError(self, err)
+		NotifierSendError(self.notifier, err)
 	}
 }
 
@@ -327,7 +332,7 @@ func ServerTemporaryDirectoryClear(self *Server) {
 func ReceiveCookie(self *Request, key string) string {
 	cookie, cookieError := self.HttpRequest.Cookie(key)
 	if cookieError != nil {
-		ServerNotifyError(self.server, cookieError)
+		NotifierSendError(self.server.notifier, cookieError)
 		return ""
 	}
 	value, unescapeError := url.QueryUnescape(cookie.Value)
@@ -345,7 +350,7 @@ func ReceiveMessage(self *Request) string {
 	if self.webSocket != nil {
 		_, readBytes, readError := self.webSocket.ReadMessage()
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return ""
 		}
 		return string(readBytes)
@@ -353,7 +358,7 @@ func ReceiveMessage(self *Request) string {
 
 	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
 	if readAllError != nil {
-		ServerNotifyError(self.server, readAllError)
+		NotifierSendError(self.server.notifier, readAllError)
 		return ""
 	}
 	return string(readBytes)
@@ -366,7 +371,7 @@ func ReceiveJson[T any](self *Request, value *T) {
 	if self.webSocket != nil {
 		jsonError := self.webSocket.ReadJSON(value)
 		if jsonError != nil {
-			ServerNotifyError(self.server, jsonError)
+			NotifierSendError(self.server.notifier, jsonError)
 			return
 		}
 		return
@@ -374,31 +379,31 @@ func ReceiveJson[T any](self *Request, value *T) {
 
 	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
 	if readAllError != nil {
-		ServerNotifyError(self.server, readAllError)
+		NotifierSendError(self.server.notifier, readAllError)
 		return
 	}
 	unmarshalError := json.Unmarshal(readBytes, &value)
 	if unmarshalError != nil {
-		ServerNotifyError(self.server, unmarshalError)
+		NotifierSendError(self.server.notifier, unmarshalError)
 	}
 }
 
 // ReceiveForm reads the message as a form and returns the value.
 func ReceiveForm(self *Request) *url.Values {
 	if self.webSocket != nil {
-		ServerNotifyError(self.server, errors.New("web socket connections cannot receive form payloads"))
+		NotifierSendError(self.server.notifier, errors.New("web socket connections cannot receive form payloads"))
 		return nil
 	}
 
 	parseMultipartFormError := self.HttpRequest.ParseMultipartForm(self.server.multipartFormMaxMemory)
 	if parseMultipartFormError != nil {
 		if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
-			ServerNotifyError(self.server, parseMultipartFormError)
+			NotifierSendError(self.server.notifier, parseMultipartFormError)
 		}
 
 		parseFormError := self.HttpRequest.ParseForm()
 		if parseFormError != nil {
-			ServerNotifyError(self.server, parseFormError)
+			NotifierSendError(self.server.notifier, parseFormError)
 		}
 	}
 
@@ -565,7 +570,7 @@ func routeCreateWithPage(
 			callback(server, request, response, page)
 
 			if nil == page {
-				ServerNotifyError(server, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
+				NotifierSendError(server.notifier, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
 				return
 			}
 
@@ -580,12 +585,12 @@ func routeCreateWithPage(
 			parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
 			if parseMultipartFormError != nil {
 				if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
-					ServerNotifyError(server, parseMultipartFormError)
+					NotifierSendError(server.notifier, parseMultipartFormError)
 				}
 
 				parseFormError := request.HttpRequest.ParseForm()
 				if parseFormError != nil {
-					ServerNotifyError(server, parseFormError)
+					NotifierSendError(server.notifier, parseFormError)
 				}
 			}
 
@@ -599,7 +604,7 @@ func routeCreateWithPage(
 			if VerifyAccept(request, "application/json") {
 				data, marshalError := json.Marshal(page.data)
 				if marshalError != nil {
-					ServerNotifyError(server, marshalError)
+					NotifierSendError(server.notifier, marshalError)
 					return
 				}
 				SendHeader(response, "Content-Type", "application/json")
@@ -698,22 +703,6 @@ type Response struct {
 	eventId               int64
 }
 
-// ServerRecallError recalls errors notified by ServerNotifyError.
-func ServerRecallError(self *Server, callback func(err error)) {
-	self.recallError = callback
-}
-
-// ServerNotifyError notifies an error.
-//
-// Recall errors with ServerRecallError.
-func ServerNotifyError(self *Server, err error) {
-	if nil == self.recallError {
-		return
-	}
-
-	self.recallError(err)
-}
-
 // SendRedirect redirects the request.
 func SendRedirect(self *Response, location string, statusCode int) {
 	SendStatus(self, statusCode)
@@ -727,7 +716,7 @@ var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
 func SendRedirectToPage(self *Response, pageId string, pathFields map[string]string) {
 	p, pathFound := pagesToPaths[pageId]
 	if !pathFound {
-		ServerNotifyError(self.server, fmt.Errorf("redirect to page `%s` failed because page id `%s` is unknown", pageId, pageId))
+		NotifierSendError(self.server.notifier, fmt.Errorf("redirect to page `%s` failed because page id `%s` is unknown", pageId, pageId))
 		return
 	}
 
@@ -750,7 +739,7 @@ func SendRedirectToPage(self *Response, pageId string, pathFields map[string]str
 // SendRedirectToSecure tries to redirect the request to the https server.
 //
 // When the request is already secure, SendRedirectToSecure returns false.
-func SendRedirectToSecure(self *Response) bool {
+func SendRedirectToSecure(self *Response, statusCode int) bool {
 	request := self.request
 	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
 		return false
@@ -773,7 +762,7 @@ func SendRedirectToSecure(self *Response) bool {
 // You can retrieve the error using ServerRecallError.
 func SendStatus(self *Response, code int) {
 	if self.lockedStatusAndHeader {
-		ServerNotifyError(self.server, errors.New("status is locked"))
+		NotifierSendError(self.server.notifier, errors.New("status is locked"))
 		return
 	}
 	self.statusCode = code
@@ -788,7 +777,7 @@ func SendStatus(self *Response, code int) {
 // You can retrieve the error using ServerRecallError
 func SendHeader(self *Response, key string, value string) {
 	if self.lockedStatusAndHeader {
-		ServerNotifyError(self.server, errors.New("headers locked"))
+		NotifierSendError(self.server.notifier, errors.New("headers locked"))
 		return
 	}
 
@@ -803,52 +792,6 @@ func SendContentType(self *Response, contentType string) {
 // SendCookie sends a cookies to the client.
 func SendCookie(self *Response, key string, value string) {
 	SendHeader(self, "set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
-}
-
-func sendEventContent(self *Response, content []byte) {
-	header := fmt.Sprintf("id: %d\r\nevent: %s\r\n", self.eventId, self.eventName)
-
-	_, writeEventError := (*self.writer).Write([]byte(header))
-	if writeEventError != nil {
-		ServerNotifyError(self.server, writeEventError)
-		return
-	}
-
-	for _, line := range bytes.Split(content, []byte("\r\n")) {
-		_, writeEventError = (*self.writer).Write([]byte("data: "))
-		if writeEventError != nil {
-			ServerNotifyError(self.server, writeEventError)
-			return
-		}
-
-		_, writeEventError = (*self.writer).Write(line)
-		if writeEventError != nil {
-			ServerNotifyError(self.server, writeEventError)
-			return
-		}
-
-		_, writeEventError = (*self.writer).Write([]byte("\r\n"))
-		if writeEventError != nil {
-			ServerNotifyError(self.server, writeEventError)
-			return
-		}
-	}
-
-	_, writeEventError = (*self.writer).Write([]byte("\r\n"))
-	if writeEventError != nil {
-		ServerNotifyError(self.server, writeEventError)
-		return
-	}
-
-	flusher, flushedOk := (*self.writer).(http.Flusher)
-	if !flushedOk {
-		ServerNotifyError(self.server, errors.New("could not retrieve flusher"))
-		return
-	}
-
-	flusher.Flush()
-
-	self.eventId++
 }
 
 // SendContent sends binary safe content.
@@ -869,19 +812,14 @@ func SendContent(self *Response, content []byte) {
 	if self.webSocket != nil {
 		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
 		if writeError != nil {
-			ServerNotifyError(self.server, writeError)
+			NotifierSendError(self.server.notifier, writeError)
 		}
 		return
 	}
 
-	if "" != self.eventName {
-		sendEventContent(self, content)
-		return
-	}
-
-	_, writeError := (*self.writer).Write(content)
-	if writeError != nil {
-		ServerNotifyError(self.server, writeError)
+	_, err := (*self.writer).Write(content)
+	if err != nil {
+		NotifierSendError(self.server.notifier, err)
 		return
 	}
 }
@@ -911,31 +849,17 @@ func SendEcho(self *Response, content string) {
 func SendJson(self *Response, payload any) {
 	content, marshalError := json.Marshal(payload)
 	if marshalError != nil {
-		ServerNotifyError(self.server, marshalError)
+		NotifierSendError(self.server.notifier, marshalError)
 	}
 
-	if "" == self.header.Get("Content-Type") {
-		self.header.Set("Content-Type", "application/json")
+	if nil == self.webSocket {
+		contentType := self.header.Get("Content-Type")
+		if "" == contentType {
+			self.header.Set("Content-Type", "application/json")
+		}
 	}
 
 	SendContent(self, content)
-}
-
-type EventPicker = func(name string)
-
-// SendEvents sends events to the client.
-//
-// You can listen to these events with EventSource.
-//
-// See https://www.w3schools.com/html/html5_serversentevents.asp
-func SendEvents(self *Response, producer func(event EventPicker)) {
-	SendHeader(self, "Cache-Control", "no-store")
-	SendHeader(self, "Content-Type", "text/event-stream")
-	SendHeader(self, "Connection", "keep-alive")
-	self.eventName = "message"
-	producer(func(name string) {
-		self.eventName = name
-	})
 }
 
 // VerifyContentType checks if the incoming request has any of the given content-types.
@@ -983,19 +907,19 @@ func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
 
 	reader, info, readerError := createReaderFromEmbeddedFileName(&request.server.embeddedFileSystem, fileName)
 	if readerError != nil {
-		ServerNotifyError(self.server, readerError)
+		NotifierSendError(self.server.notifier, readerError)
 		return
 	}
 
 	if self.webSocket != nil {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
 		if writeError != nil {
-			ServerNotifyError(self.server, writeError)
+			NotifierSendError(self.server.notifier, writeError)
 		}
 		return
 	}
@@ -1003,7 +927,7 @@ func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
 	if "" != self.eventName {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		sendEventContent(self, content)
@@ -1036,19 +960,19 @@ func SendEmbeddedFileOrElse(self *Response, orElse func()) {
 
 	reader, info, readerError := createReaderFromEmbeddedFileName(&request.server.embeddedFileSystem, fileName)
 	if readerError != nil {
-		ServerNotifyError(self.server, readerError)
+		NotifierSendError(self.server.notifier, readerError)
 		return
 	}
 
 	if self.webSocket != nil {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
 		if writeError != nil {
-			ServerNotifyError(self.server, writeError)
+			NotifierSendError(self.server.notifier, writeError)
 		}
 		return
 	}
@@ -1056,7 +980,7 @@ func SendEmbeddedFileOrElse(self *Response, orElse func()) {
 	if "" != self.eventName {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		sendEventContent(self, content)
@@ -1094,19 +1018,19 @@ func SendFileOrIndexOrElse(self *Response, orElse func()) {
 
 	reader, info, readerError := createReaderFromFileName(fileName)
 	if readerError != nil {
-		ServerNotifyError(self.server, readerError)
+		NotifierSendError(self.server.notifier, readerError)
 		return
 	}
 
 	if self.webSocket != nil {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
 		if writeError != nil {
-			ServerNotifyError(self.server, writeError)
+			NotifierSendError(self.server.notifier, writeError)
 		}
 		return
 	}
@@ -1114,7 +1038,7 @@ func SendFileOrIndexOrElse(self *Response, orElse func()) {
 	if "" != self.eventName {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		sendEventContent(self, content)
@@ -1143,19 +1067,19 @@ func SendFileOrElse(self *Response, orElse func()) {
 
 	reader, info, readerError := createReaderFromFileName(fileName)
 	if readerError != nil {
-		ServerNotifyError(self.server, readerError)
+		NotifierSendError(self.server.notifier, readerError)
 		return
 	}
 
 	if self.webSocket != nil {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		writeError := self.webSocket.WriteMessage(websocket.TextMessage, content)
 		if writeError != nil {
-			ServerNotifyError(self.server, writeError)
+			NotifierSendError(self.server.notifier, writeError)
 		}
 		return
 	}
@@ -1163,7 +1087,7 @@ func SendFileOrElse(self *Response, orElse func()) {
 	if "" != self.eventName {
 		content, readError := io.ReadAll(reader)
 		if readError != nil {
-			ServerNotifyError(self.server, readError)
+			NotifierSendError(self.server.notifier, readError)
 			return
 		}
 		sendEventContent(self, content)
@@ -1221,7 +1145,7 @@ func SendWebSocketUpgrade(self *Response, callback func()) {
 	request := self.request
 	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
 	if upgradeError != nil {
-		ServerNotifyError(request.server, upgradeError)
+		NotifierSendError(request.server.notifier, upgradeError)
 		return
 	}
 	defer conn.Close()
@@ -1235,7 +1159,7 @@ func SendWebSocketUpgrade(self *Response, callback func()) {
 func SendPage(self *Response, page *Page) {
 	content, compileError := PageCompile(page)
 	if nil != compileError {
-		ServerNotifyError(self.server, compileError)
+		NotifierSendError(self.server.notifier, compileError)
 		return
 	}
 
@@ -1304,4 +1228,50 @@ func ServerRoutePage(
 	),
 ) {
 	serverMap(self, pattern, routeCreateWithPage(pageId, callback))
+}
+
+func sendEventContent(self *Response, content []byte) {
+	header := fmt.Sprintf("id: %d\r\nevent: %s\r\n", self.eventId, self.eventName)
+
+	_, writeEventError := (*self.writer).Write([]byte(header))
+	if writeEventError != nil {
+		NotifierSendError(self.server.notifier, writeEventError)
+		return
+	}
+
+	for _, line := range bytes.Split(content, []byte("\r\n")) {
+		_, writeEventError = (*self.writer).Write([]byte("data: "))
+		if writeEventError != nil {
+			NotifierSendError(self.server.notifier, writeEventError)
+			return
+		}
+
+		_, writeEventError = (*self.writer).Write(line)
+		if writeEventError != nil {
+			NotifierSendError(self.server.notifier, writeEventError)
+			return
+		}
+
+		_, writeEventError = (*self.writer).Write([]byte("\r\n"))
+		if writeEventError != nil {
+			NotifierSendError(self.server.notifier, writeEventError)
+			return
+		}
+	}
+
+	_, writeEventError = (*self.writer).Write([]byte("\r\n"))
+	if writeEventError != nil {
+		NotifierSendError(self.server.notifier, writeEventError)
+		return
+	}
+
+	flusher, flushedOk := (*self.writer).(http.Flusher)
+	if !flushedOk {
+		NotifierSendError(self.server.notifier, errors.New("could not retrieve flusher"))
+		return
+	}
+
+	flusher.Flush()
+
+	self.eventId++
 }

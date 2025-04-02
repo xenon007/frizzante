@@ -34,7 +34,7 @@ func SessionStart(request *Request, response *Response) (
 		uuidV4, sessionIdError := uuid.NewV4()
 
 		if sessionIdError != nil {
-			ServerNotifyError(request.server, sessionIdError)
+			NotifierSendError(request.server.notifier, sessionIdError)
 		}
 
 		sessionId := uuidV4.String()
@@ -65,7 +65,7 @@ func SessionStart(request *Request, response *Response) (
 	if !sessionExists {
 		uuidV4, sessionIdError := uuid.NewV4()
 		if sessionIdError != nil {
-			ServerNotifyError(request.server, sessionIdError)
+			NotifierSendError(request.server.notifier, sessionIdError)
 		}
 		sessionId := uuidV4.String()
 		sessionGet,

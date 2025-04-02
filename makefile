@@ -70,6 +70,6 @@ certificate:
 	"/C=XX/ST=Test/L=Test/O=Test/OU=Test/CN=Test"
 
 hooks:
-	printf "#!/usr/bin/env bash\n" > .git/hooks/pre-commit
+	printf "#!/usr/bin/bash\n" > .git/hooks/pre-commit
 	printf "make test" >> .git/hooks/pre-commit
 	chmod +x .git/hooks/pre-commit

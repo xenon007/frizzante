@@ -165,15 +165,17 @@ func TestServerTemporaryDirectoryClear(test *testing.T) {
 
 func TestServerWithRoute(test *testing.T) {
 	server := ServerCreate()
+	notifier := NotifierCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
+	ServerWithNotifier(server, notifier)
 	expected := "hello"
 	ServerRouteApi(server, "GET /",
 		func(server *Server, request *Request, response *Response) {
 			SendEcho(response, expected)
 		},
 	)
-	ServerRecallError(server, func(err error) {
+	NotifierReceiveError(server.notifier, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)
@@ -191,15 +193,17 @@ func TestServerWithRoute(test *testing.T) {
 	}
 }
 
-func TestServerWithErrorReceiver(test *testing.T) {
+func TestServerWithNotifier(test *testing.T) {
 	actual := ""
 	expected := "hello\nworld\n"
 	server := ServerCreate()
-	ServerRecallError(server, func(err error) {
+	notifier := NotifierCreate()
+	ServerWithNotifier(server, notifier)
+	NotifierReceiveError(server.notifier, func(err error) {
 		actual += err.Error() + "\n"
 	})
-	ServerNotifyError(server, fmt.Errorf("hello"))
-	ServerNotifyError(server, fmt.Errorf("world"))
+	NotifierSendError(server.notifier, fmt.Errorf("hello"))
+	NotifierSendError(server.notifier, fmt.Errorf("world"))
 
 	if actual != expected {
 		test.Fatalf("server was expected to log errors '%s', received '%s' instead", expected, actual)
@@ -209,15 +213,17 @@ func TestServerWithErrorReceiver(test *testing.T) {
 func TestSendStatus(test *testing.T) {
 	expected := 201
 	server := ServerCreate()
+	notifier := NotifierCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
+	ServerWithNotifier(server, notifier)
 	ServerRouteApi(server, "GET /",
 		func(server *Server, request *Request, response *Response) {
 			SendStatus(response, expected)
 			SendEcho(response, "Ok")
 		},
 	)
-	ServerRecallError(server, func(err error) {
+	NotifierReceiveError(server.notifier, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)
@@ -241,7 +247,9 @@ func TestSendStatus(test *testing.T) {
 func TestSendHeader(test *testing.T) {
 	server := ServerCreate()
 	port := NextNumber(8080)
+	notifier := NotifierCreate()
 	ServerWithPort(server, port)
+	ServerWithNotifier(server, notifier)
 	expected := "application/json"
 	ServerRouteApi(server, "GET /",
 		func(server *Server, request *Request, response *Response) {
@@ -249,7 +257,7 @@ func TestSendHeader(test *testing.T) {
 			SendEcho(response, "{}")
 		},
 	)
-	ServerRecallError(server, func(err error) {
+	NotifierReceiveError(server.notifier, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)

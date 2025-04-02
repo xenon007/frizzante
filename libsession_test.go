@@ -27,7 +27,7 @@ func TestSessionStart(test *testing.T) {
 			SendEcho(response, "")
 		},
 	)
-	ServerRecallError(server, func(err error) {
+	NotifierReceiveError(server.notifier, func(err error) {
 		test.Fatal(err)
 	})
 	go ServerStart(server)

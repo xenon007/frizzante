@@ -9,11 +9,13 @@ import (
 
 func TestEchoSveltePageModeServer(test *testing.T) {
 	server := ServerCreate()
+	notifier := NotifierCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	ServerWithHostName(server, "127.0.0.1")
+	ServerWithNotifier(server, notifier)
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerRecallError(server, func(err error) {
+	NotifierReceiveError(server.notifier, func(err error) {
 		test.Fatal(err)
 	})
 	ServerRoutePage(server, "GET /", "Welcome",
@@ -40,11 +42,13 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 
 func TestEchoSveltePageModeClient(test *testing.T) {
 	server := ServerCreate()
+	notifier := NotifierCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
+	ServerWithNotifier(server, notifier)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerRecallError(server, func(err error) {
+	NotifierReceiveError(server.notifier, func(err error) {
 		test.Fatal(err)
 	})
 	ServerRoutePage(server, "GET /", "Welcome",
