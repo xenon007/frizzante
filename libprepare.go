@@ -25,14 +25,17 @@ func PrepareSveltePages(directoryName string) {
 				return nil
 			}
 
-			fileName := info.Name()
-			pageId := strings.ReplaceAll(
+			fileName := strings.TrimPrefix(path, directoryName)
+			pageId := strings.TrimPrefix(
 				strings.ReplaceAll(
-					strings.TrimSuffix(fileName, ".svelte"),
-					"/",
+					strings.ReplaceAll(
+						strings.TrimSuffix(fileName, ".svelte"),
+						"/",
+						"::",
+					),
+					`\`,
 					"::",
 				),
-				`\`,
 				"::",
 			)
 
@@ -77,21 +80,23 @@ func prepareServerLoader() error {
 	if readError != nil {
 		return readError
 	}
-	for id, fileName := range sveltePagesToFileNames {
-		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(id), fileName))
+	for pageId, fileName := range sveltePagesToFileNames {
+		pageIdFixed := strings.ReplaceAll(pageId, "::", "_")
+		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(pageIdFixed), fileName))
 	}
 
 	renderServerSvelteString := strings.Replace(string(renderServerSvelte), "//:app-imports", builder.String(), 1)
 
 	builder.Reset()
 	counter := 0
-	for id, _ := range sveltePagesToFileNames {
+	for pageId, _ := range sveltePagesToFileNames {
+		pageIdFixed := strings.ReplaceAll(pageId, "::", "_")
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", id))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", pageIdFixed))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", id))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", pageIdFixed))
 		}
-		builder.WriteString(fmt.Sprintf("    <%s />\n", strings.ToUpper(id)))
+		builder.WriteString(fmt.Sprintf("    <%s />\n", strings.ToUpper(pageIdFixed)))
 		counter++
 	}
 	if counter > 0 {
@@ -121,10 +126,11 @@ func prepareClientLoader() error {
 	builder.Reset()
 	counter := 0
 	for pageId, fileName := range sveltePagesToFileNames {
+		pageIdFixed := strings.ReplaceAll(pageId, "::", "_")
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === pageIdState}\n", pageId))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageIdState}\n", pageIdFixed))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageIdState}\n", pageId))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageIdState}\n", pageIdFixed))
 		}
 		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
 		counter++
