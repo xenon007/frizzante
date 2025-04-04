@@ -15,7 +15,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithNotifier(server, notifier)
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerRoutePage(server, "GET /", "welcome",
+	ServerRoutePage(server, "GET /", "Welcome",
 		func(server *Server, request *Request, response *Response, page *Page) {
 			PageWithRenderMode(page, RenderModeServer)
 			PageWithData(page, "name", "world")
@@ -45,7 +45,7 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerRoutePage(server, "GET /", "welcome",
+	ServerRoutePage(server, "GET /", "Welcome",
 		func(server *Server, request *Request, response *Response, page *Page) {
 			PageWithRenderMode(page, RenderModeClient)
 			PageWithData(page, "name", "world")
