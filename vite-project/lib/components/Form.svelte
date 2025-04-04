@@ -13,6 +13,6 @@
     const {children, method = "GET", action = '?', ...rest} = $props()
 </script>
 
-<form {method} {action} onsubmit={update(getContext("data"))} {...rest}>
+<form {method} {action} onsubmit={update(getContext("Data"))} {...rest}>
     {@render children()}
 </form>

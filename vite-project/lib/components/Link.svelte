@@ -44,8 +44,8 @@
         fields = {},
         ...rest
     } = $props()
-    const page = getContext("page")
-    const path = getContext("path")
+    const page = getContext("Page")
+    const path = getContext("Path")
 
     /**
      * @param {Event} e

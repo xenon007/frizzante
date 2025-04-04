@@ -33,7 +33,7 @@
     const id = uuid()
 </script>
 
-<form {method} {action} onsubmit={update(getContext("data"))}>
+<form {method} {action} onsubmit={update(getContext("Data"))}>
     {#each Object.keys(form) as key}
         {@const value = form[key]}
         <input type="hidden" name="{key}" value="{value}">
