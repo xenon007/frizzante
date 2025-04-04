@@ -164,6 +164,11 @@ func prepareSveltePagesStart() error {
 		return renderServerJsError
 	}
 
+	formSvelte, formSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/Form.svelte")
+	if formSvelteError != nil {
+		return formSvelteError
+	}
+
 	submitSvelte, submitSvelteError := svelteRenderToolsFileSystem.ReadFile("vite-project/lib/components/Submit.svelte")
 	if submitSvelteError != nil {
 		return submitSvelteError
@@ -223,6 +228,11 @@ func prepareSveltePagesStart() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	err = os.WriteFile(".frizzante/vite-project/lib/components/Form.svelte", formSvelte, os.ModePerm)
+	if err != nil {
+		return err
 	}
 
 	err = os.WriteFile(".frizzante/vite-project/lib/components/Submit.svelte", submitSvelte, os.ModePerm)
