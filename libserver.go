@@ -1248,7 +1248,7 @@ func ServerRouteApi(
 // ServerRoutePage routes a pattern to a page callback.
 func ServerRoutePage(
 	self *Server,
-	pattern string,
+	path string,
 	pageId string,
 	callback func(
 		server *Server,
@@ -1257,5 +1257,6 @@ func ServerRoutePage(
 		page *Page,
 	),
 ) {
-	serverMap(self, pattern, routeCreateWithPage(pageId, callback))
+	serverMap(self, "GET "+path, routeCreateWithPage(pageId, callback))
+	serverMap(self, "POST "+path, routeCreateWithPage(pageId, callback))
 }
