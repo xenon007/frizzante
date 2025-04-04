@@ -81,8 +81,8 @@ func prepareServerLoader() error {
 		return readError
 	}
 	for pageId, fileName := range sveltePagesToFileNames {
-		pageIdFixed := strings.ReplaceAll(pageId, "::", "_")
-		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", strings.ToUpper(pageIdFixed), fileName))
+		pageIdAsComponentName := strings.ToUpper(strings.ReplaceAll(pageId, "::", "_"))
+		builder.WriteString(fmt.Sprintf("    import %s from '%s'\n", pageIdAsComponentName, fileName))
 	}
 
 	renderServerSvelteString := strings.Replace(string(renderServerSvelte), "//:app-imports", builder.String(), 1)
@@ -90,13 +90,13 @@ func prepareServerLoader() error {
 	builder.Reset()
 	counter := 0
 	for pageId, _ := range sveltePagesToFileNames {
-		pageIdFixed := strings.ReplaceAll(pageId, "::", "_")
+		pageIdAsComponentName := strings.ReplaceAll(pageId, "::", "_")
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", pageIdFixed))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageId}\n", pageId))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", pageIdFixed))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageId}\n", pageId))
 		}
-		builder.WriteString(fmt.Sprintf("    <%s />\n", strings.ToUpper(pageIdFixed)))
+		builder.WriteString(fmt.Sprintf("    <%s />\n", strings.ToUpper(pageIdAsComponentName)))
 		counter++
 	}
 	if counter > 0 {
@@ -126,11 +126,10 @@ func prepareClientLoader() error {
 	builder.Reset()
 	counter := 0
 	for pageId, fileName := range sveltePagesToFileNames {
-		pageIdFixed := strings.ReplaceAll(pageId, "::", "_")
 		if 0 == counter {
-			builder.WriteString(fmt.Sprintf("{#if '%s' === pageIdState}\n", pageIdFixed))
+			builder.WriteString(fmt.Sprintf("{#if '%s' === pageIdState}\n", pageId))
 		} else {
-			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageIdState}\n", pageIdFixed))
+			builder.WriteString(fmt.Sprintf("{:else if '%s' === pageIdState}\n", pageId))
 		}
 		builder.WriteString(fmt.Sprintf("    <Page from={import('%s')} />\n", fileName))
 		counter++
