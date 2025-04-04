@@ -6,7 +6,7 @@
      * @typedef Props
      * @property {import("svelte").Snippet} children
      * @property {"get" | "post" | "GET" | "POST"} [method]
-     * @property {string} action
+     * @property {string} [action]
      */
 
     /** @type {Props} */
