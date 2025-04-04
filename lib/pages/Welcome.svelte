@@ -2,7 +2,7 @@
     import Layout from '$lib/components/Layout.svelte'
     import {getContext} from "svelte";
 
-    const data = getContext("data")
+    const data = getContext("Data")
 </script>
 
 <svelte:head>

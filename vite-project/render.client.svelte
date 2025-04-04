@@ -7,8 +7,8 @@
     let pageIdState = $state(pageId)
     let dataState = $state({...data})
     let navCounterPrevious = 0
-    setContext("data", dataState)
-    setContext("page",
+    setContext("Data", dataState)
+    setContext("Page",
         /**
          * @param {string} pageIdLocal
          * @param {Record<string,string>} [fields]
@@ -17,7 +17,7 @@
             pageFn(pageIdLocal, "push", fields)
         }
     )
-    setContext("path", pathFn)
+    setContext("Path", pathFn)
 
     window.history.replaceState({
         ...(window.history.state ?? {}),

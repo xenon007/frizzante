@@ -4,8 +4,8 @@
 
     // Do not remove or discard `pageId`, it's being used by app-router.
     let {pageId, paths, path, data} = $props()
-    setContext("data", data)
-    setContext("page", function () {
+    setContext("Data", data)
+    setContext("Page", function () {
         // Noop.
     })
 
@@ -16,7 +16,7 @@
         return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     }
 
-    setContext("path", function (pageId) {
+    setContext("Path", function (pageId) {
         let pathLocal = paths[pageId] ?? ''
         if (!paths[pageId]) {
             return ""
