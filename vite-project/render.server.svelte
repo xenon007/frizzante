@@ -8,6 +8,14 @@
     setContext("page", function () {
         // Noop.
     })
+
+    /**
+     * @param {string} string
+     */
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    }
+
     setContext("path", function (pageId) {
         let pathLocal = paths[pageId] ?? ''
         if (!paths[pageId]) {

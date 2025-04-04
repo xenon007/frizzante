@@ -42,6 +42,7 @@
         children,
         align = "start",
         fields = {},
+        ...rest
     } = $props()
     const page = getContext("page")
     const path = getContext("path")
@@ -59,6 +60,8 @@
    class:start={"start"===align}
    class:center={"center"===align}
    class:end={"end"===align}
-   {onmouseup}>
+   {onmouseup}
+   {...rest}
+>
     {@render children()}
 </a>

@@ -10,7 +10,7 @@
      */
 
     /** @type {Props} */
-    const {method = "GET", action = '?', ...rest} = $props()
+    const {children, method = "GET", action = '?', ...rest} = $props()
 </script>
 
 <form {method} {action} onsubmit={update(getContext("data"))} {...rest}>

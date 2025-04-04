@@ -18,12 +18,14 @@
      * @typedef Props
      * @property {import("svelte").Snippet} children
      * @property {"get" | "post" | "GET" | "POST"} [method]
+     * @property {string} [action]
      * @property {Record<string,string|number|boolean>} [form]
      */
 
     /** @type {Props} */
     const {
         method = "GET",
+        action = '?',
         form = {},
         children,
     } = $props()
@@ -31,7 +33,7 @@
     const id = uuid()
 </script>
 
-<form {method} action="?" onsubmit={update(getContext("data"))}>
+<form {method} {action} onsubmit={update(getContext("data"))}>
     {#each Object.keys(form) as key}
         {@const value = form[key]}
         <input type="hidden" name="{key}" value="{value}">

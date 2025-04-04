@@ -26,7 +26,6 @@ type Server struct {
 	hostName               string
 	port                   int
 	securePort             int
-	errorChunkSize         int
 	multipartFormMaxMemory int64
 	server                 *http.Server
 	mux                    *http.ServeMux
@@ -60,20 +59,20 @@ func ServerCreate() *Server {
 	var memory = map[string]sessionStore{}
 
 	return &Server{
-		hostName:           "127.0.0.1",
-		errorChunkSize:     4096,
-		port:               8081,
-		securePort:         8383,
-		server:             nil,
-		mux:                http.NewServeMux(),
-		sessions:           map[string]*net.Conn{},
-		readTimeout:        10 * time.Second,
-		writeTimeout:       10 * time.Second,
-		maxHeaderBytes:     3 * MB,
-		certificate:        "",
-		certificateKey:     "",
-		temporaryDirectory: ".temp",
-		notifier:           NotifierCreate(),
+		hostName:               "127.0.0.1",
+		multipartFormMaxMemory: 4096,
+		port:                   8081,
+		securePort:             8383,
+		server:                 nil,
+		mux:                    http.NewServeMux(),
+		sessions:               map[string]*net.Conn{},
+		readTimeout:            10 * time.Second,
+		writeTimeout:           10 * time.Second,
+		maxHeaderBytes:         3 * MB,
+		certificate:            "",
+		certificateKey:         "",
+		temporaryDirectory:     ".temp",
+		notifier:               NotifierCreate(),
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -319,10 +318,6 @@ func ServerTemporaryDirectoryClear(self *Server) {
 	if err != nil {
 		NotifierSendError(self.notifier, err)
 	}
-}
-
-func ServerWithErrorChunkSize(self *Server, errorChunkSize int) {
-	self.errorChunkSize = errorChunkSize
 }
 
 // ReceiveCookie reads the contents of a cookie from the message and returns the value.
@@ -581,18 +576,6 @@ func routeCreateWithPage(
 
 			if nil == page.path {
 				page.path = map[string]string{}
-			}
-
-			parseMultipartFormError := request.HttpRequest.ParseMultipartForm(1024)
-			if parseMultipartFormError != nil {
-				if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
-					NotifierSendError(server.notifier, parseMultipartFormError)
-				}
-
-				parseFormError := request.HttpRequest.ParseForm()
-				if parseFormError != nil {
-					NotifierSendError(server.notifier, parseFormError)
-				}
 			}
 
 			for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
