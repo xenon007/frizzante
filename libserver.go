@@ -821,6 +821,36 @@ func SendEcho(self *Response, content string) {
 	SendContent(self, []byte(content))
 }
 
+// SendNotFound sends an empty echo with status 404 Not Found.
+func SendNotFound(self *Response) {
+	SendStatus(self, http.StatusNotFound)
+	SendEcho(self, "")
+}
+
+// SendUnauthorized sends an empty echo with status 401 Unauthorized.
+func SendUnauthorized(self *Response) {
+	SendStatus(self, http.StatusUnauthorized)
+	SendEcho(self, "")
+}
+
+// SendBadRequest sends an empty echo with status 400 Bad Request.
+func SendBadRequest(self *Response) {
+	SendStatus(self, http.StatusBadRequest)
+	SendEcho(self, "")
+}
+
+// SendForbidden sends an empty echo with status 403 Forbidden.
+func SendForbidden(self *Response) {
+	SendStatus(self, http.StatusForbidden)
+	SendEcho(self, "")
+}
+
+// SendTooManyRequests sends and empty echo with status 403 Forbidden.
+func SendTooManyRequests(self *Response) {
+	SendStatus(self, http.StatusTooManyRequests)
+	SendEcho(self, "")
+}
+
 // SendJson sends json content.
 //
 // If the status code or the header have not been sent already, a default status of "200 OK" will be sent immediately along with whatever headers you've previously defined.
