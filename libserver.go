@@ -363,25 +363,28 @@ func ReceiveMessage(self *Request) string {
 // ReceiveJson reads the message as json and stores the result into value.
 //
 // Compatible with web sockets.
-func ReceiveJson[T any](self *Request, value *T) {
+func ReceiveJson[T any](self *Request) (*T, bool) {
+	var value T
 	if self.webSocket != nil {
 		jsonError := self.webSocket.ReadJSON(value)
 		if jsonError != nil {
 			NotifierSendError(self.server.notifier, jsonError)
-			return
+			return nil, false
 		}
-		return
+		return &value, true
 	}
 
 	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
 	if readAllError != nil {
 		NotifierSendError(self.server.notifier, readAllError)
-		return
+		return nil, false
 	}
 	unmarshalError := json.Unmarshal(readBytes, &value)
 	if unmarshalError != nil {
 		NotifierSendError(self.server.notifier, unmarshalError)
+		return nil, false
 	}
+	return &value, true
 }
 
 // ReceiveForm reads the message as a form and returns the value.
