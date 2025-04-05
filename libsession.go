@@ -34,7 +34,7 @@ func SessionStart(request *Request, response *Response) (
 ) {
 
 	var sessionIdCookie *http.Cookie
-	sessionIdCookies := request.HttpRequest.CookiesNamed("session-id")
+	sessionIdCookies := request.httpRequest.CookiesNamed("session-id")
 	sessionIdCookiesLen := len(sessionIdCookies)
 
 	if 0 == sessionIdCookiesLen {

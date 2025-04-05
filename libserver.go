@@ -31,6 +31,8 @@ type Server struct {
 	multipartFormMaxMemory int64
 	server                 *http.Server
 	mux                    *http.ServeMux
+	apiGuards              []func(req *Request, res *Response, pass func())
+	pageGuards             []func(req *Request, res *Response, p *Page, pass func())
 	sessions               map[string]*net.Conn
 	readTimeout            time.Duration
 	writeTimeout           time.Duration
@@ -62,12 +64,14 @@ func ServerCreate() *Server {
 
 	return &Server{
 		hostName:               "127.0.0.1",
-		multipartFormMaxMemory: 4096,
 		port:                   8081,
 		securePort:             8383,
+		multipartFormMaxMemory: 4096,
 		server:                 nil,
 		mux:                    http.NewServeMux(),
 		sessions:               map[string]*net.Conn{},
+		apiGuards:              []func(req *Request, res *Response, pass func()){},
+		pageGuards:             []func(req *Request, res *Response, p *Page, pass func()){},
 		readTimeout:            10 * time.Second,
 		writeTimeout:           10 * time.Second,
 		maxHeaderBytes:         3 * MB,
@@ -326,7 +330,7 @@ func ServerTemporaryDirectoryClear(self *Server) {
 //
 // Compatible with web sockets.
 func ReceiveCookie(self *Request, key string) string {
-	cookie, cookieError := self.HttpRequest.Cookie(key)
+	cookie, cookieError := self.httpRequest.Cookie(key)
 	if cookieError != nil {
 		NotifierSendError(self.server.notifier, cookieError)
 		return ""
@@ -343,8 +347,8 @@ func ReceiveCookie(self *Request, key string) string {
 //
 // Compatible with web sockets.
 func ReceiveMessage(self *Request) string {
-	if self.webSocket != nil {
-		_, readBytes, readError := self.webSocket.ReadMessage()
+	if self.webSocketConn != nil {
+		_, readBytes, readError := self.webSocketConn.ReadMessage()
 		if readError != nil {
 			NotifierSendError(self.server.notifier, readError)
 			return ""
@@ -352,7 +356,7 @@ func ReceiveMessage(self *Request) string {
 		return string(readBytes)
 	}
 
-	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
+	readBytes, readAllError := io.ReadAll(self.httpRequest.Body)
 	if readAllError != nil {
 		NotifierSendError(self.server.notifier, readAllError)
 		return ""
@@ -365,8 +369,8 @@ func ReceiveMessage(self *Request) string {
 // Compatible with web sockets.
 func ReceiveJson[T any](self *Request) (*T, bool) {
 	var value T
-	if self.webSocket != nil {
-		jsonError := self.webSocket.ReadJSON(value)
+	if self.webSocketConn != nil {
+		jsonError := self.webSocketConn.ReadJSON(value)
 		if jsonError != nil {
 			NotifierSendError(self.server.notifier, jsonError)
 			return nil, false
@@ -374,7 +378,7 @@ func ReceiveJson[T any](self *Request) (*T, bool) {
 		return &value, true
 	}
 
-	readBytes, readAllError := io.ReadAll(self.HttpRequest.Body)
+	readBytes, readAllError := io.ReadAll(self.httpRequest.Body)
 	if readAllError != nil {
 		NotifierSendError(self.server.notifier, readAllError)
 		return nil, false
@@ -389,52 +393,52 @@ func ReceiveJson[T any](self *Request) (*T, bool) {
 
 // ReceiveForm reads the message as a form and returns the value.
 func ReceiveForm(self *Request) *url.Values {
-	if self.webSocket != nil {
+	if self.webSocketConn != nil {
 		NotifierSendError(self.server.notifier, errors.New("web socket connections cannot receive form payloads"))
 		return &url.Values{}
 	}
 
-	parseMultipartFormError := self.HttpRequest.ParseMultipartForm(self.server.multipartFormMaxMemory)
+	parseMultipartFormError := self.httpRequest.ParseMultipartForm(self.server.multipartFormMaxMemory)
 	if parseMultipartFormError != nil {
 		if !errors.Is(parseMultipartFormError, http.ErrNotMultipart) {
 			NotifierSendError(self.server.notifier, parseMultipartFormError)
 		}
 
-		parseFormError := self.HttpRequest.ParseForm()
+		parseFormError := self.httpRequest.ParseForm()
 		if parseFormError != nil {
 			NotifierSendError(self.server.notifier, parseFormError)
 		}
 	}
 
-	return &self.HttpRequest.Form
+	return &self.httpRequest.Form
 }
 
 // ReceiveQuery reads a query field and returns the value.
 //
 // Compatible with web sockets.
 func ReceiveQuery(self *Request, name string) string {
-	return self.HttpRequest.URL.Query().Get(name)
+	return self.httpRequest.URL.Query().Get(name)
 }
 
 // ReceivePath reads a parameters fields and returns the value.
 //
 // Compatible with web sockets.
 func ReceivePath(self *Request, name string) string {
-	return self.HttpRequest.PathValue(name)
+	return self.httpRequest.PathValue(name)
 }
 
 // ReceiveHeader reads a header field and returns the value.
 //
 // Compatible with web sockets.
 func ReceiveHeader(self *Request, key string) string {
-	return self.HttpRequest.Header.Get(key)
+	return self.httpRequest.Header.Get(key)
 }
 
 // ReceiveContentType reads the Content-Type header field and returns the value.
 //
 // Compatible with web sockets.
 func ReceiveContentType(self *Request) string {
-	return self.HttpRequest.Header.Get("Content-Type")
+	return self.httpRequest.Header.Get("Content-Type")
 }
 
 // ServerStart starts the server.
@@ -522,10 +526,23 @@ func routeCreate(
 	),
 ) *Route {
 	return &Route{
-		isPage:   false,
-		page:     "",
-		callback: callback,
-		mount:    func(pattern string) {},
+		isPage: false,
+		page:   "",
+		callback: func(request *Request, response *Response) {
+			for _, guard := range response.server.apiGuards {
+				pass := false
+				guard(request, response, func() {
+					pass = true
+				})
+
+				if !pass {
+					return
+				}
+			}
+
+			callback(request, response)
+		},
+		mount: func(pattern string) {},
 	}
 }
 
@@ -556,6 +573,17 @@ func routeCreateWithPage(
 				efs:        request.server.embeddedFileSystem,
 				name:       page,
 				parameters: map[string]string{},
+			}
+
+			for _, guard := range response.server.pageGuards {
+				pass := false
+				guard(request, response, p, func() {
+					pass = true
+				})
+
+				if !pass {
+					return
+				}
 			}
 
 			callback(request, response, p)
@@ -597,7 +625,7 @@ func routeCreateWithPage(
 				if len(name) < 1 {
 					continue
 				}
-				p.parameters[name[1]] = request.HttpRequest.PathValue(name[1])
+				p.parameters[name[1]] = request.httpRequest.PathValue(name[1])
 			}
 
 			SendPage(response, p)
@@ -638,7 +666,7 @@ func serverMap(
 	self.mux.HandleFunc(pattern, func(writer http.ResponseWriter, httpRequest *http.Request) {
 		request := Request{
 			server:      self,
-			HttpRequest: httpRequest,
+			httpRequest: httpRequest,
 		}
 
 		httpHeader := writer.Header()
@@ -660,7 +688,7 @@ func serverMap(
 			SendEmbeddedFileOrElse(&response, func() {
 				SendFileOrElse(&response, func() {
 					if route.callback != nil {
-						if "/favicon.ico" == request.HttpRequest.RequestURI {
+						if "/favicon.ico" == request.httpRequest.RequestURI {
 							SendNotFound(&response)
 							return
 						}
@@ -683,21 +711,16 @@ func serverMap(
 }
 
 type Request struct {
-	server      *Server
-	response    *Response
-	HttpRequest *http.Request
-	webSocket   *websocket.Conn
+	server        *Server
+	response      *Response
+	httpRequest   *http.Request
+	webSocketConn *websocket.Conn
 }
 
 type Navigate struct {
-	Page       string            `json:"page"`
-	Parameters map[string]string `json:"parameters"`
-	Location   string            `json:"location"`
-}
-
-type ServerToClientSync struct {
-	Data     any       `json:"data"`
-	Navigate *Navigate `json:"navigate"`
+	Page       string
+	Parameters map[string]string
+	Location   string
 }
 
 type Response struct {
@@ -763,14 +786,14 @@ var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
 // When the request is already secure, SendRedirectToSecure returns false.
 func SendRedirectToSecure(self *Response, statusCode int) bool {
 	request := self.request
-	if "" == request.server.certificate || "" == request.server.certificateKey || request.HttpRequest.TLS != nil {
+	if "" == request.server.certificate || "" == request.server.certificateKey || request.httpRequest.TLS != nil {
 		return false
 	}
 
 	insecureSuffix := fmt.Sprintf(":%d", request.server.port)
 	secureSuffix := fmt.Sprintf(":%d", request.server.securePort)
-	secureHost := strings.Replace(request.HttpRequest.Host, insecureSuffix, secureSuffix, 1)
-	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.HttpRequest.RequestURI)
+	secureHost := strings.Replace(request.httpRequest.Host, insecureSuffix, secureSuffix, 1)
+	secureLocation := fmt.Sprintf("https://%s%s", secureHost, request.httpRequest.RequestURI)
 	SendRedirect(self, secureLocation, 302)
 	return true
 }
@@ -911,7 +934,7 @@ func SendJson(self *Response, payload any) {
 
 // VerifyContentType checks if the incoming request has any of the given content-types.
 func VerifyContentType(self *Request, contentTypes ...string) bool {
-	requestedMime := self.HttpRequest.Header.Get("Content-Type")
+	requestedMime := self.httpRequest.Header.Get("Content-Type")
 	for _, acceptedMime := range contentTypes {
 		if acceptedMime == "*" || strings.HasPrefix(requestedMime, acceptedMime) {
 			return true
@@ -923,7 +946,7 @@ func VerifyContentType(self *Request, contentTypes ...string) bool {
 
 // VerifyAccept checks if the incoming request accepts any of the given content-types.
 func VerifyAccept(self *Request, contentTypes ...string) bool {
-	requestedAcceptMime := self.HttpRequest.Header.Get("Accept")
+	requestedAcceptMime := self.httpRequest.Header.Get("Accept")
 	for _, acceptedMime := range contentTypes {
 		if acceptedMime == "*" || strings.Contains(requestedAcceptMime, acceptedMime) {
 			return true
@@ -983,7 +1006,7 @@ func sendEventContent(self *Response, content []byte) {
 // or the closest index.html embedded file, or else falls back.
 func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
 	request := self.request
-	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join(".dist", "client", request.httpRequest.RequestURI)
 
 	if !EmbeddedExists(request.server.embeddedFileSystem, fileName) {
 		orElse()
@@ -1034,14 +1057,14 @@ func SendEmbeddedFileOrIndexOrElse(self *Response, orElse func()) {
 	if "" == self.header.Get("Content-Length") {
 		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
 	}
-	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	http.ServeContent(*self.writer, request.httpRequest, fileName, (*info).ModTime(), reader)
 }
 
 // SendEmbeddedFileOrElse sends the embedded file requested by the client,
 // or the closest index.html embedded file, or else falls back.
 func SendEmbeddedFileOrElse(self *Response, orElse func()) {
 	request := self.request
-	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join(".dist", "client", request.httpRequest.RequestURI)
 	fileName = strings.Split(fileName, "?")[0]
 	fileName = strings.Split(fileName, "&")[0]
 
@@ -1087,14 +1110,14 @@ func SendEmbeddedFileOrElse(self *Response, orElse func()) {
 	if "" == self.header.Get("Content-Length") {
 		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
 	}
-	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	http.ServeContent(*self.writer, request.httpRequest, fileName, (*info).ModTime(), reader)
 }
 
 // SendFileOrIndexOrElse sends the file requested by the client,
 // or the closest index.html file, or else falls back.
 func SendFileOrIndexOrElse(self *Response, orElse func()) {
 	request := self.request
-	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join(".dist", "client", request.httpRequest.RequestURI)
 
 	if !Exists(fileName) {
 		orElse()
@@ -1145,13 +1168,13 @@ func SendFileOrIndexOrElse(self *Response, orElse func()) {
 	if "" == self.header.Get("Content-Length") {
 		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
 	}
-	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	http.ServeContent(*self.writer, request.httpRequest, fileName, (*info).ModTime(), reader)
 }
 
 // SendFileOrElse sends the file requested by the client, or else falls back.
 func SendFileOrElse(self *Response, orElse func()) {
 	request := self.request
-	fileName := filepath.Join(".dist", "client", request.HttpRequest.RequestURI)
+	fileName := filepath.Join(".dist", "client", request.httpRequest.RequestURI)
 
 	if !Exists(fileName) || IsDirectory(fileName) {
 		orElse()
@@ -1194,7 +1217,7 @@ func SendFileOrElse(self *Response, orElse func()) {
 	if "" == self.header.Get("Content-Length") {
 		SendHeader(self, "Content-Length", fmt.Sprintf("%d", (*info).Size()))
 	}
-	http.ServeContent(*self.writer, request.HttpRequest, fileName, (*info).ModTime(), reader)
+	http.ServeContent(*self.writer, request.httpRequest, fileName, (*info).ModTime(), reader)
 }
 
 func createReaderFromEmbeddedFileName(efs *embed.FS, fileName string) (*bytes.Reader, *os.FileInfo, error) {
@@ -1236,14 +1259,14 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 // SendWebSocketUpgrade upgrades the http connection to web socket.
 func SendWebSocketUpgrade(self *Response, callback func()) {
 	request := self.request
-	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.HttpRequest, nil)
+	conn, upgradeError := self.server.webSocketUpgrader.Upgrade(*self.writer, request.httpRequest, nil)
 	if upgradeError != nil {
 		NotifierSendError(request.server.notifier, upgradeError)
 		return
 	}
 	defer conn.Close()
 	self.webSocket = conn
-	request.webSocket = conn
+	request.webSocketConn = conn
 	self.lockedStatusAndHeader = true
 	callback()
 }
@@ -1307,6 +1330,13 @@ func ServerWithApi(
 	serverMap(self, pattern, routeCreate(callback))
 }
 
+type ApiGuardFunction = func(req *Request, res *Response, pass func())
+
+// ServerWithApiGuard adds an api guard, a function that executes before every api request.
+func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
+	self.apiGuards = append(self.apiGuards, guard)
+}
+
 type WireFunction = func()
 type LoadFunction = func(wire WireFunction)
 
@@ -1346,4 +1376,11 @@ func ServerWithPage(
 
 	serverMap(self, "GET "+path, routeCreateWithPage(page, show))
 	serverMap(self, "POST "+path, routeCreateWithPage(page, action))
+}
+
+type PageGuardFunction = func(req *Request, res *Response, p *Page, pass func())
+
+// ServerWithPageGuard adds a page guard, a function that executes before every api page.
+func ServerWithPageGuard(self *Server, guard PageGuardFunction) {
+	self.pageGuards = append(self.pageGuards, guard)
 }
