@@ -509,7 +509,7 @@ var pathParametersPattern = regexp.MustCompile(`{([^{}]+)}`)
 type Route struct {
 	server   *Server
 	isPage   bool
-	pageId   string
+	page     string
 	callback func(request *Request, response *Response)
 	mount    func(pattern string)
 }
@@ -523,7 +523,7 @@ func routeCreate(
 ) *Route {
 	return &Route{
 		isPage:   false,
-		pageId:   "",
+		page:     "",
 		callback: callback,
 		mount:    func(pattern string) {},
 	}
@@ -545,39 +545,39 @@ func routeCreateWithPage(
 
 	return &Route{
 		isPage: true,
-		pageId: page,
+		page:   page,
 		callback: func(
 			request *Request,
 			response *Response,
 		) {
-			page := &Page{
+			p := &Page{
 				render:     RenderFull,
 				data:       map[string]any{},
 				efs:        request.server.embeddedFileSystem,
-				id:         page,
+				name:       page,
 				parameters: map[string]string{},
 			}
 
-			callback(request, response, page)
+			callback(request, response, p)
 
-			if nil == page {
+			if nil == p {
 				NotifierSendError(request.server.notifier, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
 				return
 			}
 
-			if nil == page.parameters {
-				page.parameters = map[string]string{}
+			if nil == p.parameters {
+				p.parameters = map[string]string{}
 			}
 
 			for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
 				if len(name) < 1 {
 					continue
 				}
-				page.parameters[name[1]] = request.HttpRequest.PathValue(name[1])
+				p.parameters[name[1]] = request.HttpRequest.PathValue(name[1])
 			}
 
 			if VerifyAccept(request, "application/json") {
-				data, marshalError := json.Marshal(page.data)
+				data, marshalError := json.Marshal(p.data)
 				if marshalError != nil {
 					NotifierSendError(request.server.notifier, marshalError)
 					return
@@ -588,7 +588,7 @@ func routeCreateWithPage(
 			}
 
 			if "" == response.header.Get("Location") {
-				SendPage(response, page)
+				SendPage(response, p)
 			}
 		},
 		mount: func(patternLocal string) {

@@ -17,7 +17,7 @@ type Page struct {
 	render     Render
 	data       map[string]any
 	efs        embed.FS
-	id         string
+	name       string
 	parameters map[string]string
 }
 
@@ -66,7 +66,7 @@ func PageCompile(self *Page) (string, error) {
 
 	routerPropsBytes, jsonError := json.Marshal(PageProps{
 		Pages:      pages,
-		Page:       self.id,
+		Page:       self.name,
 		Data:       self.data,
 		Parameters: self.parameters,
 	})
