@@ -166,15 +166,10 @@ func PageCompile(self *Page) (string, error) {
 
 	if RenderHeadless == self.render {
 		_, body, renderError := render(self.efs, routerPropsString)
+
 		if renderError != nil {
 			return "", renderError
 		}
-
-		body = strings.Replace(body, "<!--[-->", "", -1)
-		body = strings.Replace(body, "<!--]-->", "", -1)
-		body = strings.Replace(body, "<!--!]-->", "", -1)
-		body = strings.Replace(body, "<!--[!-->", "", -1)
-		body = strings.Replace(body, "<!---->", "", -1)
 
 		return body, nil
 
