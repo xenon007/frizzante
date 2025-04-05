@@ -2,43 +2,53 @@
     //:app-imports
     import {setContext} from "svelte";
 
-    let {pageId, paths, path, data} = $props()
+    /**
+     * @typedef Props
+     * @property {string} page
+     * @property {Record<string,any>} data
+     * @property {Record<string,string>} pages
+     * @property {Record<string,string>} parameters
+     */
+
+    /** @type {Props} */
+    let {page, data, pages, parameters} = $props()
     // Do not remove or discard `pageId`, it's being used by app-router.
-    let pageIdState = $state(pageId)
+    let pageState = $state(page)
     let dataState = $state({...data})
     let navCounterPrevious = 0
-    setContext("Data", dataState)
-    setContext("Page",
+    setContext("data", dataState)
+    setContext("navigate",
         /**
-         * @param {string} pageIdLocal
-         * @param {Record<string,string>} [fields]
+         * @param {string} page
+         * @param {Record<string,string>} [parameters]
          */
-        function (pageIdLocal, fields) {
-            pageFn(pageIdLocal, "push", fields)
+        function (page, parameters) {
+            navigate(page, "push", parameters)
         }
     )
-    setContext("Path", pathFn)
+    setContext("path", path)
+    setContext("page", _page)
 
     window.history.replaceState({
         ...(window.history.state ?? {}),
-        pageId,
+        page,
         fields: path,
         navCounter: navCounterPrevious,
     }, "", `${document.location.pathname}${document.location.hash}${document.location.search}`)
 
     window.addEventListener("popstate", (e) => {
         e.preventDefault()
-        const pageIdLocal = e.state?.pageId ?? ""
-        const fields = e.state?.fields ?? {}
+        const pageLocal = e.state?.page ?? ""
+        const parameters = e.state?.parameters ?? {}
         const navCounterLocal = e.state?.navCounter ?? 0
         if (navCounterLocal < navCounterPrevious) {
-            pageFn(pageIdLocal, "back", fields)
+            navigate(pageLocal, "back", parameters)
             navCounterPrevious = navCounterLocal
         } else if (navCounterLocal > navCounterPrevious) {
-            pageFn(pageIdLocal, "forward", fields)
+            navigate(pageLocal, "forward", parameters)
             navCounterPrevious = navCounterLocal
         } else {
-            pageFn(pageIdLocal, "push", fields)
+            navigate(pageLocal, "push", parameters)
         }
     });
 
@@ -50,17 +60,17 @@
     }
 
     /**
-     * @param {string} pageId
-     * @param {Record<string,string>} [fields]
+     * @param {string} page
+     * @param {Record<string,string>} [parameters]
      */
-    function pathFn(pageId, fields = {}) {
-        let result = paths[pageId] ?? ""
-        if (!paths[pageId]) {
+    function path(page, parameters = {}) {
+        let result = pages[page] ?? ""
+        if (!pages[page]) {
             return ""
         }
 
-        for (let key in fields) {
-            const value = fields[key]
+        for (let key in parameters) {
+            const value = parameters[key]
             const regex = escapeRegExp(`{${key}}`)
             result = result.replaceAll(new RegExp(regex, "g"), value)
         }
@@ -69,25 +79,57 @@
     }
 
     /**
-     *
-     * @param {string} pageIdLocal
-     * @param {"back"|"forward"|"push"} modifier
-     * @param {Record<string,string>} fields
+     * @param {string} path
      */
-    function pageFn(pageIdLocal, modifier, fields) {
-        if (!paths[pageIdLocal]) {
+    function _page(path) {
+        const parts = path.split("/")
+        for (const page in pages) {
+            const pagePathLocal = pages[page]
+            if(pagePathLocal === path) {
+                return page
+            }
+
+            const partsLocal = pagePathLocal.split("/")
+            if(partsLocal.length !== parts.length){
+                continue
+            }
+
+            let ok = true
+            for (const index in partsLocal) {
+                if(partsLocal[index] !== parts[index] && !parts[index].startsWith("{")){
+                    ok = false
+                    break
+                }
+            }
+
+            if(ok){
+                return page
+            }
+        }
+
+        return ""
+    }
+
+    /**
+     *
+     * @param {string} page
+     * @param {"back"|"forward"|"push"} modifier
+     * @param {Record<string,string>} [parameters]
+     */
+    function navigate(page, modifier, parameters) {
+        if (!pages[page]) {
             return
         }
 
-        const pathLocal = pathFn(pageIdLocal, fields)
+        const pathLocal = path(page, parameters)
         if ("push" === modifier) {
             window.history.pushState({
-                pageId: pageIdLocal,
-                fields: fields,
+                page,
+                parameters,
                 navCounter: ++navCounterPrevious,
             }, "", pathLocal);
         }
-        pageIdState = pageIdLocal
+        pageState = page
 
         fetch(pathLocal, {headers: {"Accept": "application/json"}}).then(async (response) => {
             const data = await response.json()

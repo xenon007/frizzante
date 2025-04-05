@@ -152,15 +152,15 @@ func TestServerTemporaryDirectoryClear(test *testing.T) {
 	}
 }
 
-func TestServerWithRoute(test *testing.T) {
+func TestServerWithApi(test *testing.T) {
 	server := ServerCreate()
 	notifier := NotifierCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
 	expected := "hello"
-	ServerRouteApi(server, "GET /",
-		func(server *Server, request *Request, response *Response) {
+	ServerWithApi(server, "GET /",
+		func(request *Request, response *Response) {
 			SendEcho(response, expected)
 		},
 	)
@@ -186,8 +186,8 @@ func TestSendStatus(test *testing.T) {
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
-	ServerRouteApi(server, "GET /",
-		func(server *Server, request *Request, response *Response) {
+	ServerWithApi(server, "GET /",
+		func(request *Request, response *Response) {
 			SendStatus(response, expected)
 			SendEcho(response, "Ok")
 		},
@@ -217,8 +217,8 @@ func TestSendHeader(test *testing.T) {
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
 	expected := "application/json"
-	ServerRouteApi(server, "GET /",
-		func(server *Server, request *Request, response *Response) {
+	ServerWithApi(server, "GET /",
+		func(request *Request, response *Response) {
 			SendHeader(response, "Content-Type", expected)
 			SendEcho(response, "{}")
 		},

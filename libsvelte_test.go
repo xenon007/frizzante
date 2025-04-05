@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestEchoSveltePageModeServer(test *testing.T) {
+func TestRenderServer(test *testing.T) {
 	server := ServerCreate()
 	notifier := NotifierCreate()
 	port := NextNumber(8080)
@@ -15,10 +15,16 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithNotifier(server, notifier)
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerRoutePage(server, "/", "Welcome",
-		func(server *Server, request *Request, response *Response, page *Page) {
-			PageWithRenderMode(page, RenderModeServer)
-			PageWithData(page, "name", "world")
+	ServerWithPage(server, "/", "welcome",
+		func() (
+			show PageFunction,
+			action PageFunction,
+		) {
+			show = func(req *Request, res *Response, p *Page) {
+				PageWithRender(p, RenderServer)
+				PageWithData(p, "name", "world")
+			}
+			return
 		},
 	)
 	go ServerStart(server)
@@ -37,7 +43,7 @@ func TestEchoSveltePageModeServer(test *testing.T) {
 	}
 }
 
-func TestEchoSveltePageModeClient(test *testing.T) {
+func TestRenderClient(test *testing.T) {
 	server := ServerCreate()
 	notifier := NotifierCreate()
 	port := NextNumber(8080)
@@ -45,10 +51,16 @@ func TestEchoSveltePageModeClient(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerRoutePage(server, "/", "Welcome",
-		func(server *Server, request *Request, response *Response, page *Page) {
-			PageWithRenderMode(page, RenderModeClient)
-			PageWithData(page, "name", "world")
+	ServerWithPage(server, "/", "welcome",
+		func() (
+			show PageFunction,
+			action PageFunction,
+		) {
+			show = func(req *Request, res *Response, p *Page) {
+				PageWithRender(p, RenderClient)
+				PageWithData(p, "name", "world")
+			}
+			return
 		},
 	)
 	go ServerStart(server)

@@ -11,44 +11,39 @@ import (
 	"strings"
 )
 
+var pages = map[string]string{}
+
 type Page struct {
-	renderMode         RenderMode
-	data               map[string]any
-	embeddedFileSystem embed.FS
-	id                 string
-	path               map[string]string
+	render     Render
+	data       map[string]any
+	efs        embed.FS
+	id         string
+	parameters map[string]string
 }
 
-// PageWithRenderMode sets the page rendering mode.
-func PageWithRenderMode(self *Page, renderMode RenderMode) {
-	self.renderMode = renderMode
+// PageWithRender sets the page rendering mode.
+func PageWithRender(self *Page, render Render) {
+	self.render = render
 }
 
-// PageWithData sets the page data.
-//
-// Retrieve this data in your svelte components with getContext("data").
+// PageWithData sets data to the page.
 func PageWithData(self *Page, key string, value any) {
 	self.data[key] = value
 }
 
 var noScriptPattern = regexp.MustCompile(`<script.*>.*</script>`)
-var pagesToPaths = map[string]string{}
 
-type svelteRouterProps struct {
-	PageId string            `json:"pageId"`
-	Data   map[string]any    `json:"data"`
-	Paths  map[string]string `json:"paths"`
-	Path   map[string]string `json:"path"`
+type PageProps struct {
+	Page       string            `json:"page"`
+	Data       map[string]any    `json:"data"`
+	Pages      map[string]string `json:"pages"`
+	Parameters map[string]string `json:"parameters"`
 }
 
-// PageCompile compiles a svelte page.
+// PageCompile compiles a page.
 func PageCompile(self *Page) (string, error) {
-	if nil == self.data {
-		self.data = map[string]any{}
-	}
-
-	if nil == self.path {
-		self.path = map[string]string{}
+	if nil == self.parameters {
+		self.parameters = map[string]string{}
 	}
 
 	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
@@ -62,18 +57,18 @@ func PageCompile(self *Page) (string, error) {
 		}
 		indexBytes = indexBytesLocal
 	} else {
-		indexBytesLocal, readError := self.embeddedFileSystem.ReadFile(fileNameIndex)
+		indexBytesLocal, readError := self.efs.ReadFile(fileNameIndex)
 		if readError != nil {
 			return "", readError
 		}
 		indexBytes = indexBytesLocal
 	}
 
-	routerPropsBytes, jsonError := json.Marshal(svelteRouterProps{
-		PageId: self.id,
-		Data:   self.data,
-		Paths:  pagesToPaths,
-		Path:   self.path,
+	routerPropsBytes, jsonError := json.Marshal(PageProps{
+		Pages:      pages,
+		Page:       self.id,
+		Data:       self.data,
+		Parameters: self.parameters,
 	})
 
 	if jsonError != nil {
@@ -87,8 +82,8 @@ func PageCompile(self *Page) (string, error) {
 		return "", targetIdError
 	}
 
-	if RenderModeFull == self.renderMode {
-		head, body, renderError := render(self.embeddedFileSystem, routerPropsString)
+	if RenderFull == self.render {
+		head, body, renderError := render(self.efs, routerPropsString)
 		if renderError != nil {
 			return "", renderError
 		}
@@ -111,14 +106,14 @@ func PageCompile(self *Page) (string, error) {
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				"<script type=\"application/javascript\">function props(){return %s}</script>",
+				"<script type=\"application/javascript\">function data(){return %s}</script>",
 				routerPropsString,
 			),
 			1,
 		), nil
 	}
 
-	if RenderModeClient == self.renderMode {
+	if RenderClient == self.render {
 		return strings.Replace(
 			strings.Replace(
 				strings.Replace(
@@ -138,15 +133,15 @@ func PageCompile(self *Page) (string, error) {
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				"<script type=\"application/javascript\">function props(){return %s}</script>",
+				"<script type=\"application/javascript\">function data(){return %s}</script>",
 				routerPropsString,
 			),
 			1,
 		), nil
 	}
 
-	if RenderModeServer == self.renderMode {
-		head, body, renderError := render(self.embeddedFileSystem, routerPropsString)
+	if RenderServer == self.render {
+		head, body, renderError := render(self.efs, routerPropsString)
 		if renderError != nil {
 			return "", renderError
 		}
@@ -173,8 +168,8 @@ func PageCompile(self *Page) (string, error) {
 		), nil
 	}
 
-	if RenderModeHeadless == self.renderMode {
-		_, body, renderError := render(self.embeddedFileSystem, routerPropsString)
+	if RenderHeadless == self.render {
+		_, body, renderError := render(self.efs, routerPropsString)
 		if renderError != nil {
 			return "", renderError
 		}
@@ -190,24 +185,4 @@ func PageCompile(self *Page) (string, error) {
 	}
 
 	return "", nil
-}
-
-// PageCreate creates a page.
-func PageCreate(
-	embeddedFileSystem embed.FS,
-	renderMode RenderMode,
-	pageId string,
-	data map[string]any,
-) *Page {
-	if nil == data {
-		data = map[string]any{}
-	}
-
-	return &Page{
-		renderMode:         renderMode,
-		data:               data,
-		id:                 pageId,
-		embeddedFileSystem: embeddedFileSystem,
-		path:               map[string]string{},
-	}
 }

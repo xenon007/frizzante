@@ -9,13 +9,13 @@ import (
 	"rogchap.com/v8go"
 )
 
-type RenderMode int64
+type Render int64
 
 const (
-	RenderModeServer   RenderMode = 0 // Renders only on the server.
-	RenderModeClient   RenderMode = 1 // Renders only on the client.
-	RenderModeFull     RenderMode = 2 // Renders on both the server and the client.
-	RenderModeHeadless RenderMode = 3 // Renders only on the server and omits the base template.
+	RenderServer   Render = 0 // Renders only on the server.
+	RenderClient   Render = 1 // Renders only on the client.
+	RenderFull     Render = 2 // Renders on both the server and the client.
+	RenderHeadless Render = 3 // Renders only on the server and omits the base template.
 )
 
 func render(efs embed.FS, stringProps string) (string, string, error) {

@@ -4,6 +4,7 @@
         width: 100%;
         height: 100%;
     }
+
     .submit {
         display: none;
     }
@@ -14,26 +15,31 @@
     import {getContext} from "svelte";
     import {uuid} from "../scripts/uuid.js";
 
+    const path = getContext("path")
+    const onsubmit = update(getContext("data"))
+    const id = uuid()
+
     /**
      * @typedef Props
-     * @property {import("svelte").Snippet} children
-     * @property {"get" | "post" | "GET" | "POST"} [method]
      * @property {string} [action]
+     * @property {import("svelte").Snippet} children
      * @property {Record<string,string|number|boolean>} [form]
      */
 
     /** @type {Props} */
-    const {
-        method = "GET",
+    let {
         action = '?',
-        form = {},
         children,
+        form = {},
     } = $props()
 
-    const id = uuid()
+
+    if('?' !== action){
+        action = path(action)
+    }
 </script>
 
-<form {method} {action} onsubmit={update(getContext("Data"))}>
+<form method="POST" {action} {onsubmit}>
     {#each Object.keys(form) as key}
         {@const value = form[key]}
         <input type="hidden" name="{key}" value="{value}">

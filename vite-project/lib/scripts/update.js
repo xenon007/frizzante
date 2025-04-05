@@ -1,16 +1,13 @@
-/**
- * @typedef Props
- * @property {import("svelte").Snippet} children
- * @property {"get" | "post" | "GET" | "POST"} [method]
- * @property {Record<string,string|number|boolean>} [form]
- * @property {"start"|"center"|"end"} [align]
- */
+import {getContext} from "svelte";
 
 /**
  * @param {string} queryString
  * @param {Record<string,any>} dataState
  */
-function done(queryString, dataState) {
+function done(
+    queryString,
+    dataState,
+) {
     /**
      * @param {Response} response
      */
@@ -32,6 +29,14 @@ function done(queryString, dataState) {
                     dataState[key] = data[key]
                 }
 
+                if (response.redirected) {
+                    /** @type {function(string,Record<string,any>)} */
+                    const navigate = getContext("navigate")
+                    /** @type {function(string):string} */
+                    const page = getContext("page")
+
+                    navigate(page(response.url.replace(window.location.origin, "")), data)
+                }
             })
             .catch(fail)
     }
@@ -45,11 +50,12 @@ function fail(reason) {
 }
 
 /**
- *
  * @param {Record<string,any>} state
  * @return {function(e:SubmitEvent)}
  */
-export function update(state) {
+export function update(
+    state,
+) {
     return function onsubmit(e) {
         e.preventDefault()
         /** @type {HTMLFormElement} */
@@ -70,6 +76,9 @@ export function update(state) {
             return
         }
 
-        fetch("?", {method, headers, body: formData}).then(done("", state))
+        fetch(
+            formElement.action,
+            {method, headers, body: formData}
+        ).then(done("", state)).catch(fail)
     }
 }

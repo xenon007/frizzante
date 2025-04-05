@@ -22,6 +22,8 @@ import (
 	"time"
 )
 
+type PageFunction = func(req *Request, res *Response, p *Page)
+
 type Server struct {
 	hostName               string
 	port                   int
@@ -386,7 +388,7 @@ func ReceiveJson[T any](self *Request, value *T) {
 func ReceiveForm(self *Request) *url.Values {
 	if self.webSocket != nil {
 		NotifierSendError(self.server.notifier, errors.New("web socket connections cannot receive form payloads"))
-		return nil
+		return &url.Values{}
 	}
 
 	parseMultipartFormError := self.HttpRequest.ParseMultipartForm(self.server.multipartFormMaxMemory)
@@ -411,7 +413,7 @@ func ReceiveQuery(self *Request, name string) string {
 	return self.HttpRequest.URL.Query().Get(name)
 }
 
-// ReceivePath reads a path fields and returns the value.
+// ReceivePath reads a parameters fields and returns the value.
 //
 // Compatible with web sockets.
 func ReceivePath(self *Request, name string) string {
@@ -447,8 +449,8 @@ func ServerStart(self *Server) {
 	}
 
 	if !entryCreated {
-		ServerRouteApi(self, "GET /",
-			func(server *Server, request *Request, response *Response) {
+		ServerWithApi(self, "GET /",
+			func(request *Request, response *Response) {
 				SendStatus(response, 404)
 			},
 		)
@@ -505,14 +507,13 @@ type Route struct {
 	server   *Server
 	isPage   bool
 	pageId   string
-	callback func(server *Server, request *Request, response *Response)
+	callback func(request *Request, response *Response)
 	mount    func(pattern string)
 }
 
 // routeCreate creates a route configuration from a callback function.
 func routeCreate(
 	callback func(
-		server *Server,
 		request *Request,
 		response *Response,
 	),
@@ -534,61 +535,48 @@ func routeCreate(
 //
 // However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
 func routeCreateWithPage(
-	pageId string,
-	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-		page *Page,
-	),
+	page string,
+	callback PageFunction,
 ) *Route {
 	var pattern string
-	if strings.HasSuffix(pageId, ".svelte") {
-		pageId = strings.TrimSuffix(pageId, ".svelte")
-	}
 
 	return &Route{
 		isPage: true,
-		pageId: pageId,
+		pageId: page,
 		callback: func(
-			server *Server,
 			request *Request,
 			response *Response,
 		) {
 			page := &Page{
-				renderMode:         RenderModeFull,
-				data:               map[string]interface{}{},
-				embeddedFileSystem: server.embeddedFileSystem,
-				id:                 pageId,
-				path:               map[string]string{},
+				render:     RenderFull,
+				data:       map[string]any{},
+				efs:        request.server.embeddedFileSystem,
+				id:         page,
+				parameters: map[string]string{},
 			}
 
-			callback(server, request, response, page)
+			callback(request, response, page)
 
 			if nil == page {
-				NotifierSendError(server.notifier, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
+				NotifierSendError(request.server.notifier, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
 				return
 			}
 
-			if nil == page.data {
-				page.data = map[string]any{}
-			}
-
-			if nil == page.path {
-				page.path = map[string]string{}
+			if nil == page.parameters {
+				page.parameters = map[string]string{}
 			}
 
 			for _, name := range pathParametersPattern.FindAllStringSubmatch(pattern, -1) {
 				if len(name) < 1 {
 					continue
 				}
-				page.path[name[1]] = request.HttpRequest.PathValue(name[1])
+				page.parameters[name[1]] = request.HttpRequest.PathValue(name[1])
 			}
 
 			if VerifyAccept(request, "application/json") {
 				data, marshalError := json.Marshal(page.data)
 				if marshalError != nil {
-					NotifierSendError(server.notifier, marshalError)
+					NotifierSendError(request.server.notifier, marshalError)
 					return
 				}
 				SendHeader(response, "Content-Type", "application/json")
@@ -605,7 +593,7 @@ func routeCreateWithPage(
 			patternParts := strings.Split(patternLocal, " ")
 			patternCounter := len(patternParts)
 			if patternCounter > 1 {
-				pagesToPaths[pageId] = path.Join(patternParts[1:]...)
+				pages[page] = path.Join(patternParts[1:]...)
 			}
 		},
 	}
@@ -658,12 +646,20 @@ func serverMap(
 			SendEmbeddedFileOrElse(&response, func() {
 				SendFileOrElse(&response, func() {
 					if route.callback != nil {
-						route.callback(self, &request, &response)
+						route.callback(&request, &response)
+
+						if !response.lockedStatusAndHeader {
+							SendEcho(&response, "")
+						}
 					}
 				})
 			})
 		} else if route.callback != nil {
-			route.callback(self, &request, &response)
+			route.callback(&request, &response)
+
+			if !response.lockedStatusAndHeader {
+				SendEcho(&response, "")
+			}
 		}
 	})
 }
@@ -691,16 +687,15 @@ type Response struct {
 func SendRedirect(self *Response, location string, statusCode int) {
 	SendStatus(self, statusCode)
 	SendHeader(self, "Location", location)
-	SendEcho(self, "")
 }
 
 var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
 
 // SendRedirectToPage redirects the request to a page.
-func SendRedirectToPage(self *Response, pageId string, pathFields map[string]string) {
-	p, pathFound := pagesToPaths[pageId]
+func SendRedirectToPage(self *Response, page string, parameters map[string]string) {
+	p, pathFound := pages[page]
 	if !pathFound {
-		NotifierSendError(self.server.notifier, fmt.Errorf("redirect to page `%s` failed because page id `%s` is unknown", pageId, pageId))
+		NotifierSendError(self.server.notifier, fmt.Errorf("redirect to page `%s` failed because page id `%s` is unknown", page, page))
 		return
 	}
 
@@ -708,15 +703,16 @@ func SendRedirectToPage(self *Response, pageId string, pathFields map[string]str
 		pathFieldRegex.ReplaceAllFunc(
 			[]byte(p),
 			func(i []byte) []byte {
-				if nil == pathFields {
+				if nil == parameters {
 					return []byte{}
 				}
 				key := string(i[1 : len(i)-1])
-				return []byte(pathFields[key])
+				return []byte(parameters[key])
 			},
 		),
 	)
 
+	//SendHeader(self, "X-Go", location)
 	SendRedirect(self, location, 302)
 }
 
@@ -824,31 +820,26 @@ func SendEcho(self *Response, content string) {
 // SendNotFound sends an empty echo with status 404 Not Found.
 func SendNotFound(self *Response) {
 	SendStatus(self, http.StatusNotFound)
-	SendEcho(self, "")
 }
 
 // SendUnauthorized sends an empty echo with status 401 Unauthorized.
 func SendUnauthorized(self *Response) {
 	SendStatus(self, http.StatusUnauthorized)
-	SendEcho(self, "")
 }
 
 // SendBadRequest sends an empty echo with status 400 Bad Request.
 func SendBadRequest(self *Response) {
 	SendStatus(self, http.StatusBadRequest)
-	SendEcho(self, "")
 }
 
 // SendForbidden sends an empty echo with status 403 Forbidden.
 func SendForbidden(self *Response) {
 	SendStatus(self, http.StatusForbidden)
-	SendEcho(self, "")
 }
 
 // SendTooManyRequests sends and empty echo with status 403 Forbidden.
 func SendTooManyRequests(self *Response) {
 	SendStatus(self, http.StatusTooManyRequests)
-	SendEcho(self, "")
 }
 
 // SendJson sends json content.
@@ -1235,7 +1226,7 @@ func SendPage(self *Response, page *Page) {
 // operations used by the server to manage any session,
 // get, set, unset and destroy.
 //
-// Get must retrieve data from the session store.
+// Get must retriedataata from the session store.
 //
 // Set must create a new property to the session store or update an existing one.
 //
@@ -1243,7 +1234,7 @@ func SendPage(self *Response, page *Page) {
 //
 // Destroy must destroy the whole session, store included.
 //
-// In this context, "store", is any type of data storage,
+// In this context, "store", is any type dataata storage,
 // it could be a file written to disk, a database, Ram,
 // it doesn't matter.
 //
@@ -1262,12 +1253,11 @@ func ServerWithSessionOperator(
 	self.sessionOperator = sessionOperator
 }
 
-// ServerRouteApi routes a pattern to an api callback.
-func ServerRouteApi(
+// ServerWithApi adds an api.
+func ServerWithApi(
 	self *Server,
 	pattern string,
 	callback func(
-		server *Server,
 		request *Request,
 		response *Response,
 	),
@@ -1275,18 +1265,43 @@ func ServerRouteApi(
 	serverMap(self, pattern, routeCreate(callback))
 }
 
-// ServerRoutePage routes a pattern to a page callback.
-func ServerRoutePage(
+type WireFunction = func()
+type LoadFunction = func(wire WireFunction)
+
+// ServerWithPage adds a page.
+func ServerWithPage(
 	self *Server,
 	path string,
-	pageId string,
-	callback func(
-		server *Server,
-		request *Request,
-		response *Response,
-		page *Page,
+	page string,
+	index func() (
+		show PageFunction,
+		action PageFunction,
 	),
 ) {
-	serverMap(self, "GET "+path, routeCreateWithPage(pageId, callback))
-	serverMap(self, "POST "+path, routeCreateWithPage(pageId, callback))
+	if "" == path {
+		NotifierSendError(self.notifier, errors.New("could not add index because path is unknown"))
+		return
+	}
+
+	if "" == page {
+		NotifierSendError(self.notifier, errors.New("could not add index because page is unknown"))
+		return
+	}
+
+	show, action := index()
+
+	if nil == show {
+		show = func(req *Request, res *Response, p *Page) {
+			// Noop.
+		}
+	}
+
+	if nil == action {
+		action = func(req *Request, res *Response, p *Page) {
+			// Noop.
+		}
+	}
+
+	serverMap(self, "GET "+path, routeCreateWithPage(page, show))
+	serverMap(self, "POST "+path, routeCreateWithPage(page, action))
 }

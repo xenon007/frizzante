@@ -30,33 +30,33 @@
 
     /**
      * @typedef Props
-     * @property {string} pageId
+     * @property {string} page
      * @property {import("svelte").Snippet} children
      * @property {"start"|"center"|"end"} [align]
-     * @property {Record<string,string>} [fields]
+     * @property {Record<string,string>} [parameters]
      */
 
     /** @type {Props} */
     const {
-        pageId,
+        page,
         children,
         align = "start",
-        fields = {},
+        parameters = {},
         ...rest
     } = $props()
-    const page = getContext("Page")
-    const path = getContext("Path")
+    const navigate = getContext("navigate")
+    const path = getContext("path")
 
     /**
      * @param {Event} e
      */
     function onmouseup(e) {
         e.preventDefault()
-        page(pageId, fields)
+        navigate(page, parameters)
     }
 </script>
 
-<a href="{path(pageId, fields)}"
+<a href="{path(page, parameters)}"
    class:start={"start"===align}
    class:center={"center"===align}
    class:end={"end"===align}
