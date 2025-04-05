@@ -2,8 +2,15 @@
     import {getContext} from "svelte";
     import {update} from "../scripts/update.js";
 
+    /** @type {function(string):string} */
+    const page = getContext("page")
+    /** @type {function(string):string} */
     const path = getContext("path")
-    const onsubmit = update(getContext("data"))
+    /** @type {function(string,Record<string,any>)} */
+    const navigate = getContext("navigate")
+    /** @type {Record<string,any>} */
+    const data = getContext("data")
+    const onsubmit = update(page, path, navigate, data)
 
     /**
      * @typedef Props

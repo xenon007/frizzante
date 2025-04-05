@@ -15,8 +15,14 @@
     import {getContext} from "svelte";
     import {uuid} from "../scripts/uuid.js";
 
+    /** @type {function(string,Record<string,any>)} */
+    const navigate = getContext("navigate")
+    /** @type {function(string):string} */
+    const page = getContext("page")
+    /** @type {function(string):string} */
     const path = getContext("path")
-    const onsubmit = update(getContext("data"))
+    const data = getContext("data")
+    const onsubmit = update(page, path, navigate, data)
     const id = uuid()
 
     /**
@@ -34,7 +40,7 @@
     } = $props()
 
 
-    if('?' !== action){
+    if ('?' !== action) {
         action = path(action)
     }
 </script>

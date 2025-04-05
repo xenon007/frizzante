@@ -1,12 +1,16 @@
-import {getContext} from "svelte";
-
 /**
- * @param {string} queryString
- * @param {Record<string,any>} dataState
+ * @param {function(string):string} page
+ * @param {function(string):string} path
+ * @param {function(string,Record<string,any>)} navigate
+ * @param {string} query
+ * @param {Record<string,any>} state
  */
 function done(
-    queryString,
-    dataState,
+    page,
+    path,
+    navigate,
+    query,
+    state,
 ) {
     /**
      * @param {Response} response
@@ -19,22 +23,21 @@ function done(
 
         response.json()
             .then(function (data) {
-                const state = window.history.state ?? {}
-                history.replaceState(state, "", `${window.location.pathname}${document.location.hash}${queryString}`)
-                for (const key in dataState) {
-                    delete dataState[key]
+                history.replaceState(
+                    window.history.state ?? {},
+                    "",
+                    `${window.location.pathname}${document.location.hash}${query}`,
+                )
+
+                for (const key in state) {
+                    delete state[key]
                 }
 
                 for (const key in data) {
-                    dataState[key] = data[key]
+                    state[key] = data[key]
                 }
 
                 if (response.redirected) {
-                    /** @type {function(string,Record<string,any>)} */
-                    const navigate = getContext("navigate")
-                    /** @type {function(string):string} */
-                    const page = getContext("page")
-
                     navigate(page(response.url.replace(window.location.origin, "")), data)
                 }
             })
@@ -50,10 +53,16 @@ function fail(reason) {
 }
 
 /**
+ * @param {function(string):string} page
+ * @param {function(string):string} path
+ * @param {function(string,Record<string,any>)} navigate
  * @param {Record<string,any>} state
  * @return {function(e:SubmitEvent)}
  */
 export function update(
+    page,
+    path,
+    navigate,
     state,
 ) {
     return function onsubmit(e) {
@@ -71,14 +80,14 @@ export function update(
             }
 
             const search = data.toString()
-            const queryString = `?${search}`
-            fetch(queryString, {method, headers}).then(done(queryString, state)).catch(fail)
+            const query = `?${search}`
+            fetch(query, {method, headers}).then(done(page, path, navigate, query, state)).catch(fail)
             return
         }
 
         fetch(
             formElement.action,
             {method, headers, body: formData}
-        ).then(done("", state)).catch(fail)
+        ).then(done(page, path, navigate, "", state)).catch(fail)
     }
 }

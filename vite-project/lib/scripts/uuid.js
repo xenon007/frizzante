@@ -9,7 +9,7 @@
  * @param {UuidPayload} payload
  * @returns
  */
-export function uuid({ short } = { short: false }) {
+export function uuid({short} = {short: false}) {
     let dt = new Date().getTime()
     const BLUEPRINT = short ? 'xyxxyxyx' : 'xxxxxxxx-xxxx-yxxx-yxxx-xxxxxxxxxxxx'
     return BLUEPRINT.replace(/[xy]/g, function check(c) {
