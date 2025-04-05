@@ -42,10 +42,6 @@ type PageProps struct {
 
 // PageCompile compiles a page.
 func PageCompile(self *Page) (string, error) {
-	if nil == self.parameters {
-		self.parameters = map[string]string{}
-	}
-
 	fileNameIndex := filepath.Join(".dist", "client", ".frizzante", "vite-project", "index.html")
 
 	var indexBytes []byte

@@ -49,34 +49,52 @@
 
     /**
      * @param {string} path
+     * @returns {{page:string,parameters:Record<string,string>}}
      */
     function _page(path) {
-        const parts = path.split("/")
+        const partsGiven = path.split("/")
         for (const page in pages) {
-            const pagePathLocal = pages[page]
-            if(pagePathLocal === path) {
-                return page
-            }
-
-            const partsLocal = pagePathLocal.split("/")
-            if(partsLocal.length !== parts.length){
+            const pathExpected = pages[page]
+            const partsExpected = pathExpected.split("/")
+            if (partsExpected.length !== partsGiven.length) {
                 continue
             }
 
+            /** @type {Record<string,string>} */
+            const parameters = {}
+
             let ok = true
-            for (const index in partsLocal) {
-                if(partsLocal[index] !== parts[index] && !parts[index].startsWith("{")){
+            for (let index = 0; index < partsExpected.length; index++) {
+                const expectedIsParameter = partsExpected[index].startsWith("{") && partsExpected[index].endsWith("}")
+                const givenAndExpectedAreDifferent = partsGiven[index] !== partsExpected[index]
+
+                if (givenAndExpectedAreDifferent) {
+                    if(!expectedIsParameter){
+                        ok = false
+                        break
+                    }
+                    const key = partsExpected[index].substring(0,partsExpected[index].length-1).substring(1)
+                    parameters[key] = partsGiven[index]
+                } else if(expectedIsParameter) {
+                    // Given part and expected part cannot be equal while expected part is a parameter.
+                    // We reject that.
                     ok = false
                     break
                 }
             }
 
-            if(ok){
-                return page
+            if (ok) {
+                return {
+                    page,
+                    parameters,
+                }
             }
         }
 
-        return ""
+        return {
+            page: "",
+            parameters: {}
+        }
     }
 </script>
 

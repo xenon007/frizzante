@@ -100,7 +100,7 @@ func ServerCreate() *Server {
 				sessionItem, ok := store.data[key]
 				if !ok {
 					store.data[key] = defaultValue
-					value = store.data[key]
+					value = defaultValue
 					store.lastActivityAt = time.Now()
 					return
 				}
@@ -560,8 +560,32 @@ func routeCreateWithPage(
 
 			callback(request, response, p)
 
+			if nil != response.navigate {
+				SendRedirect(response, response.navigate.Location, http.StatusFound)
+				return
+			}
+
+			if "" != response.header.Get("Location") {
+				return
+			}
+
 			if nil == p {
 				NotifierSendError(request.server.notifier, fmt.Errorf("svelte page handler `%s` returned a nil page", pattern))
+				return
+			}
+
+			if nil == p.data {
+				p.data = map[string]any{}
+			}
+
+			if VerifyAccept(request, "application/json") {
+				data, marshalError := json.Marshal(p.data)
+				if marshalError != nil {
+					NotifierSendError(request.server.notifier, marshalError)
+					return
+				}
+				SendHeader(response, "Content-Type", "application/json")
+				SendEcho(response, string(data))
 				return
 			}
 
@@ -576,20 +600,7 @@ func routeCreateWithPage(
 				p.parameters[name[1]] = request.HttpRequest.PathValue(name[1])
 			}
 
-			if VerifyAccept(request, "application/json") {
-				data, marshalError := json.Marshal(p.data)
-				if marshalError != nil {
-					NotifierSendError(request.server.notifier, marshalError)
-					return
-				}
-				SendHeader(response, "Content-Type", "application/json")
-				SendEcho(response, string(data))
-				return
-			}
-
-			if "" == response.header.Get("Location") {
-				SendPage(response, p)
-			}
+			SendPage(response, p)
 		},
 		mount: func(patternLocal string) {
 			pattern = patternLocal
@@ -649,6 +660,10 @@ func serverMap(
 			SendEmbeddedFileOrElse(&response, func() {
 				SendFileOrElse(&response, func() {
 					if route.callback != nil {
+						if "/favicon.ico" == request.HttpRequest.RequestURI {
+							SendNotFound(&response)
+							return
+						}
 						route.callback(&request, &response)
 
 						if !response.lockedStatusAndHeader {
@@ -674,6 +689,17 @@ type Request struct {
 	webSocket   *websocket.Conn
 }
 
+type Navigate struct {
+	Page       string            `json:"page"`
+	Parameters map[string]string `json:"parameters"`
+	Location   string            `json:"location"`
+}
+
+type ServerToClientSync struct {
+	Data     any       `json:"data"`
+	Navigate *Navigate `json:"navigate"`
+}
+
 type Response struct {
 	server                *Server
 	request               *Request
@@ -683,19 +709,16 @@ type Response struct {
 	header                *http.Header
 	webSocket             *websocket.Conn
 	eventName             string
+	navigate              *Navigate
 	eventId               int64
 }
 
-// SendRedirect redirects the request.
-func SendRedirect(self *Response, location string, statusCode int) {
-	SendStatus(self, statusCode)
-	SendHeader(self, "Location", location)
-}
+// SendNavigateWithParameters sends the client an instruction to navigate.
+func SendNavigateWithParameters(self *Response, page string, parameters map[string]string) {
+	if nil == parameters {
+		parameters = map[string]string{}
+	}
 
-var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
-
-// SendRedirectToPage redirects the request to a page.
-func SendRedirectToPage(self *Response, page string, parameters map[string]string) {
 	p, pathFound := pages[page]
 	if !pathFound {
 		NotifierSendError(self.server.notifier, fmt.Errorf("redirect to page `%s` failed because page id `%s` is unknown", page, page))
@@ -715,9 +738,25 @@ func SendRedirectToPage(self *Response, page string, parameters map[string]strin
 		),
 	)
 
-	//SendHeader(self, "X-Go", location)
-	SendRedirect(self, location, 302)
+	self.navigate = &Navigate{
+		Page:       page,
+		Parameters: parameters,
+		Location:   location,
+	}
 }
+
+// SendNavigate sends the client an instruction to navigate.
+func SendNavigate(self *Response, page string) {
+	SendNavigateWithParameters(self, page, map[string]string{})
+}
+
+// SendRedirect redirects the request.
+func SendRedirect(self *Response, location string, statusCode int) {
+	SendStatus(self, statusCode)
+	SendHeader(self, "Location", location)
+}
+
+var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
 
 // SendRedirectToSecure tries to redirect the request to the https server.
 //
@@ -774,7 +813,7 @@ func SendContentType(self *Response, contentType string) {
 
 // SendCookie sends a cookies to the client.
 func SendCookie(self *Response, key string, value string) {
-	SendHeader(self, "set-Cookie", fmt.Sprintf("%s=%s", url.QueryEscape(key), url.QueryEscape(value)))
+	SendHeader(self, "Set-Cookie", fmt.Sprintf("%s=%s; Path=/; HttpOnly", url.QueryEscape(key), url.QueryEscape(value)))
 }
 
 // SendContent sends binary safe content.

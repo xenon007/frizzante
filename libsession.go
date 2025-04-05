@@ -1,6 +1,9 @@
 package frizzante
 
-import uuid "github.com/nu7hatch/gouuid"
+import (
+	uuid "github.com/nu7hatch/gouuid"
+	"net/http"
+)
 
 var sessions = map[string]*Session{}
 
@@ -29,8 +32,12 @@ func SessionStart(request *Request, response *Response) (
 	set func(key string, value any),
 	unset func(key string),
 ) {
-	sessionIdCookie, cookieError := request.HttpRequest.Cookie("session-id")
-	if cookieError != nil {
+
+	var sessionIdCookie *http.Cookie
+	sessionIdCookies := request.HttpRequest.CookiesNamed("session-id")
+	sessionIdCookiesLen := len(sessionIdCookies)
+
+	if 0 == sessionIdCookiesLen {
 		uuidV4, sessionIdError := uuid.NewV4()
 
 		if sessionIdError != nil {
@@ -61,7 +68,17 @@ func SessionStart(request *Request, response *Response) (
 		return
 	}
 
-	session, sessionExists := sessions[sessionIdCookie.Value]
+	var sessionExists bool
+	var session *Session
+
+	for _, cookie := range sessionIdCookies {
+		session, sessionExists = sessions[cookie.Value]
+		if sessionExists {
+			sessionIdCookie = cookie
+			break
+		}
+	}
+
 	if !sessionExists {
 		uuidV4, sessionIdError := uuid.NewV4()
 		if sessionIdError != nil {

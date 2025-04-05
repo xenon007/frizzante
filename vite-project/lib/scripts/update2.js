@@ -1,6 +1,18 @@
 /**
+ * @typedef Navigate
+ * @property {string} page
+ * @property {Record<string,string>} parameters
+ * @property {string} location
+ */
+
+/**
+ * @typedef ServerToClientSync
+ * @property {Record<string,any>} data
+ * @property {Navigate} [navigate]
+ */
+
+/**
  * @typedef DonePayload
- * @property {function(string):{page:string,parameters:Record<string,string>}} page
  * @property {function(string,Record<string,string>)} navigate
  * @property {string} query
  * @property {Record<string,any>} data
@@ -12,7 +24,6 @@
  */
 function done(payload) {
     const {
-        page,
         navigate,
         query,
         data,
@@ -28,26 +39,28 @@ function done(payload) {
         }
 
         response.json()
-            .then(function (responseData) {
-                history.replaceState(
-                    window.history.state ?? {},
-                    "",
-                    `${window.location.pathname}${document.location.hash}${query}`,
-                )
+            .then(
+                /**
+                 * @param {ServerToClientSync} sync
+                 */
+                function (sync) {
+                    const responseData = sync.data ?? {}
+                    const responseNavigate = sync.navigate ?? false
+                    history.replaceState(window.history.state ?? {}, "", `${window.location.pathname}${document.location.hash}${query}`,)
 
-                for (const key in data) {
-                    delete data[key]
-                }
+                    for (const key in data) {
+                        delete data[key]
+                    }
 
-                for (const key in responseData) {
-                    data[key] = responseData[key]
-                }
+                    for (const key in responseData) {
+                        data[key] = responseData[key]
+                    }
 
-                if (response.redirected) {
-                    const resolved = page(response.url.replace(window.location.origin, ""))
-                    navigate(resolved.page, resolved.parameters)
+                    if (responseNavigate) {
+                        navigate(responseNavigate.page, responseNavigate.parameters)
+                    }
                 }
-            })
+            )
             .catch(fail)
     }
 }
@@ -61,7 +74,6 @@ function fail(reason) {
 
 /**
  * @typedef UpdatePayload
- * @property {function(string):{page:string,parameters:Record<string,string>}} page
  * @property {function(string,Record<string,string>)} navigate
  * @property {Record<string,any>} data
  */
@@ -70,7 +82,7 @@ function fail(reason) {
  * @param {UpdatePayload} payload
  */
 export function update(payload) {
-    const {page, navigate, data} = payload
+    const { navigate, data} = payload
     return function onsubmit(e) {
         e.preventDefault()
         /** @type {HTMLFormElement} */
@@ -80,16 +92,15 @@ export function update(payload) {
         const headers = {"Accept": "application/json"}
 
         if (method === "get" || method === "GET") {
-            const dataLocal = new URLSearchParams();
+            const data = new URLSearchParams();
             for (const [key, value] of formData) {
-                dataLocal.append(key, value.toString());
+                data.append(key, value.toString());
             }
 
             const search = data.toString()
             const query = `?${search}`
             const init = {method, headers}
             const donePayload = {
-                page,
                 navigate,
                 query,
                 data,
@@ -100,7 +111,6 @@ export function update(payload) {
 
         const init = {method, headers, body: formData}
         const donePayload = {
-            page,
             navigate,
             query: "",
             data,

@@ -3,14 +3,15 @@
     import {update} from "../scripts/update.js";
 
     /** @type {function(string):string} */
-    const page = getContext("page")
-    /** @type {function(string):string} */
     const path = getContext("path")
-    /** @type {function(string,Record<string,any>)} */
+    /** @type {function(string):string} */
+    const page = getContext("page")
+    /** @type {function(string,Record<string,string>)} */
     const navigate = getContext("navigate")
     /** @type {Record<string,any>} */
     const data = getContext("data")
-    const onsubmit = update(page, path, navigate, data)
+
+    const onsubmit = update({page, navigate, data})
 
     /**
      * @typedef Props
