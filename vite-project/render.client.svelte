@@ -32,7 +32,7 @@
     window.history.replaceState({
         ...(window.history.state ?? {}),
         page,
-        fields: path,
+        parameters,
         navCounter: navCounterPrevious,
     }, "", `${document.location.pathname}${document.location.hash}${document.location.search}`)
 

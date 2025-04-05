@@ -106,7 +106,7 @@ func PageCompile(self *Page) (string, error) {
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				"<script type=\"application/javascript\">function data(){return %s}</script>",
+				"<script type=\"application/javascript\">function props(){return %s}</script>",
 				routerPropsString,
 			),
 			1,
@@ -133,7 +133,7 @@ func PageCompile(self *Page) (string, error) {
 			),
 			"<!--app-data-->",
 			fmt.Sprintf(
-				"<script type=\"application/javascript\">function data(){return %s}</script>",
+				"<script type=\"application/javascript\">function props(){return %s}</script>",
 				routerPropsString,
 			),
 			1,
