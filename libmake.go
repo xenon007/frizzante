@@ -25,21 +25,33 @@ func createIndex(indexName string) {
 		}
 	}
 
-	indexName = strings.Trim(strings.ToTitle(indexName[0:1])+indexName[1:], "\r\n\t ")
+	indexNameCamel := strings.Trim(strings.ToLower(indexName[0:1])+indexName[1:], "\r\n\t ")
+	indexNamePascal := strings.Trim(strings.ToTitle(indexName[0:1])+indexName[1:], "\r\n\t ")
 
 	oldFileName := "templates/indexes/example.go"
-	newFileName := filepath.Join("lib", "indexes", strings.ToLower(indexName)+".go")
+	newFileName := filepath.Join("lib", "indexes", indexNameCamel+".go")
 	readBytes, readError := templates.ReadFile(oldFileName)
 	if nil != readError {
 		panic(readError)
 	}
 	if Exists(newFileName) {
-		fmt.Printf("Index `%s` already exists.", indexName)
+		fmt.Printf("Index `%s` already exists.", indexNameCamel)
 		return
 	}
 
-	oldTitle := []byte("func index")
-	newTitle := []byte("func " + indexName)
+	// Index.
+	oldTitle := []byte("func Index")
+	newTitle := []byte("func " + indexNamePascal)
+	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
+
+	// Show.
+	oldTitle = []byte("indexShow")
+	newTitle = []byte(indexNameCamel + "Show")
+	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
+
+	// Action.
+	oldTitle = []byte("indexAction")
+	newTitle = []byte(indexNameCamel + "Action")
 	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
 
 	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
@@ -60,28 +72,29 @@ func createGuard(guardName string) {
 		}
 	}
 
-	guardName = strings.Trim(strings.ToTitle(guardName[0:1])+guardName[1:], "\r\n\t ")
+	guardNameCamel := strings.Trim(strings.ToLower(guardName[0:1])+guardName[1:], "\r\n\t ")
+	guardNamePascal := strings.Trim(strings.ToTitle(guardName[0:1])+guardName[1:], "\r\n\t ")
 
 	oldFileName := "templates/guards/example.go"
-	newFileName := filepath.Join("lib", "guards", strings.ToLower(guardName)+".go")
+	newFileName := filepath.Join("lib", "guards", guardNameCamel+".go")
 	readBytes, readError := templates.ReadFile(oldFileName)
 	if nil != readError {
 		panic(readError)
 	}
 
 	if Exists(newFileName) {
-		fmt.Printf("Guard `%s` already exists.", guardName)
+		fmt.Printf("Guard `%s` already exists.", guardNameCamel)
 		return
 	}
 
 	// Api.
-	oldTitle := []byte("func guardApi")
-	newTitle := []byte("func " + guardName + "Api")
+	oldTitle := []byte("GuardApi")
+	newTitle := []byte(guardNamePascal + "Api")
 	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
 
 	// Pages.
-	oldTitle = []byte("func guardPages")
-	newTitle = []byte("func " + guardName + "Pages")
+	oldTitle = []byte("GuardPages")
+	newTitle = []byte(guardNamePascal + "Pages")
 	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
 
 	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
