@@ -4,7 +4,7 @@
     /**
      * Server data.
      * @typedef Data
-     * @property {}
+     * @property {any} prop1
      */
 
     /** @type {Data} */
