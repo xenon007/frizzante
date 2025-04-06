@@ -25,6 +25,8 @@ func createIndex(indexName string) {
 		}
 	}
 
+	indexName = strings.ReplaceAll(indexName, "-", "_")
+
 	indexNameCamel := strings.Trim(strings.ToLower(indexName[0:1])+indexName[1:], "\r\n\t ")
 	indexNamePascal := strings.Trim(strings.ToTitle(indexName[0:1])+indexName[1:], "\r\n\t ")
 
@@ -72,6 +74,8 @@ func createGuard(guardName string) {
 		}
 	}
 
+	guardName = strings.ReplaceAll(guardName, "-", "_")
+
 	guardNameCamel := strings.Trim(strings.ToLower(guardName[0:1])+guardName[1:], "\r\n\t ")
 	guardNamePascal := strings.Trim(strings.ToTitle(guardName[0:1])+guardName[1:], "\r\n\t ")
 
@@ -103,9 +107,45 @@ func createGuard(guardName string) {
 	}
 }
 
+func createPage(pageName string) {
+	if "" == pageName {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Name the page: ")
+		pageName, _ = reader.ReadString('\n')
+		if "" == pageName {
+			createIndex(pageName)
+			return
+		}
+	}
+
+	pageName = strings.ReplaceAll(pageName, "-", "_")
+
+	pageNameCamel := strings.Trim(strings.ToLower(pageName[0:1])+pageName[1:], "\r\n\t ")
+	//pageNamePascal := strings.Trim(strings.ToTitle(pageName[0:1])+pageName[1:], "\r\n\t ")
+
+	oldFileName := "templates/pages/example.go"
+	newFileName := filepath.Join("lib", "pages", pageNameCamel+".go")
+	readBytes, readError := templates.ReadFile(oldFileName)
+	if nil != readError {
+		panic(readError)
+	}
+
+	if Exists(newFileName) {
+		fmt.Printf("Page `%s` already exists.", pageNameCamel)
+		return
+	}
+
+	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
+	if writeError != nil {
+		panic(writeError)
+	}
+}
+
+// Make makes things.
 func Make() {
 	index := flag.Bool("index", false, "")
 	guard := flag.Bool("guard", false, "")
+	page := flag.Bool("page", false, "")
 	name := flag.String("name", "", "")
 	flag.Parse()
 
@@ -115,5 +155,9 @@ func Make() {
 
 	if *guard {
 		createGuard(*name)
+	}
+
+	if *page {
+		createPage(*name)
 	}
 }
