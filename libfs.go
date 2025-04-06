@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 )
 
-// EmbeddedExists checks if fileName exists.
+// EmbeddedExists checks if file exists.
 func EmbeddedExists(embeddedFileSystem embed.FS, fileName string) bool {
 	return EmbeddedIsFile(embeddedFileSystem, fileName) || EmbeddedIsDirectory(embeddedFileSystem, fileName)
 }
 
-// EmbeddedIsFile check if fileName exists and is a file.
+// EmbeddedIsFile check if file exists and is a file.
 func EmbeddedIsFile(embeddedFileSystem embed.FS, fileName string) bool {
 	_, err := embeddedFileSystem.ReadFile(fileName)
 	if err != nil {
@@ -21,7 +21,7 @@ func EmbeddedIsFile(embeddedFileSystem embed.FS, fileName string) bool {
 	return true
 }
 
-// EmbeddedIsDirectory checks if fileName exists and is a directory.
+// EmbeddedIsDirectory checks if file exists and is a directory.
 func EmbeddedIsDirectory(embeddedFileSystem embed.FS, fileName string) bool {
 	_, err := embeddedFileSystem.ReadDir(fileName)
 	if err != nil {
@@ -30,13 +30,19 @@ func EmbeddedIsDirectory(embeddedFileSystem embed.FS, fileName string) bool {
 	return true
 }
 
-// Exists checks if fileName exists.
+// Exists checks if file exists.
 func Exists(fileName string) bool {
 	_, statError := os.Stat(fileName)
 	return nil == statError || !errors.Is(statError, os.ErrNotExist)
 }
 
-// IsFile check if fileName exists and is a file.
+// Delete deletes a file.
+func Delete(fileName string) bool {
+	removeError := os.Remove(fileName)
+	return nil == removeError || !errors.Is(removeError, os.ErrNotExist)
+}
+
+// IsFile check if file exists and is a file.
 func IsFile(fileName string) bool {
 	stat, statError := os.Stat(fileName)
 	if statError != nil {
@@ -45,7 +51,7 @@ func IsFile(fileName string) bool {
 	return !stat.IsDir()
 }
 
-// IsDirectory checks if fileName exists and is a directory.
+// IsDirectory checks if file exists and is a directory.
 func IsDirectory(fileName string) bool {
 	stat, statError := os.Stat(fileName)
 	if statError != nil {
