@@ -123,8 +123,8 @@ func createPage(pageName string) {
 	pageNameCamel := strings.Trim(strings.ToLower(pageName[0:1])+pageName[1:], "\r\n\t ")
 	//pageNamePascal := strings.Trim(strings.ToTitle(pageName[0:1])+pageName[1:], "\r\n\t ")
 
-	oldFileName := "templates/pages/example.go"
-	newFileName := filepath.Join("lib", "pages", pageNameCamel+".go")
+	oldFileName := "templates/pages/example.svelte"
+	newFileName := filepath.Join("lib", "pages", pageNameCamel+".svelte")
 	readBytes, readError := templates.ReadFile(oldFileName)
 	if nil != readError {
 		panic(readError)
