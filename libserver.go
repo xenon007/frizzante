@@ -1341,34 +1341,36 @@ func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
 
 type WireFunction = func()
 type LoadFunction = func(wire WireFunction)
-type IndexFunction = func() (
-	page string,
-	show PageFunction,
-	action PageFunction,
+type IndexFunction = func(
+	route func(path string, page string),
+	show func(showFunction PageFunction),
+	action func(actionFunction PageFunction),
 )
 
 // ServerWithIndex adds an index.
-func ServerWithIndex(self *Server, index IndexFunction) {
+func ServerWithIndex(
+	self *Server,
+	index IndexFunction,
+) {
 	indexPage := ""
 	indexPath := ""
+	var show PageFunction
+	var action PageFunction
 
-	page, show, action := index()
+	index(
+		func(path string, page string) {
+			indexPath = path
+			indexPage = page
+		},
+		func(showFunction PageFunction) {
+			show = showFunction
+		},
+		func(actionFunction PageFunction) {
+			action = actionFunction
+		},
+	)
 
-	if "" == page {
-		NotifierSendError(self.notifier, fmt.Errorf("could not add index because page is empty"))
-		return
-	}
-
-	patternItems := strings.SplitN(page, " ", 2)
-	patternItemsLen := len(patternItems)
-
-	if patternItemsLen >= 1 {
-		indexPage = patternItems[0]
-	}
-
-	if patternItemsLen >= 2 {
-		indexPath = patternItems[1]
-	} else {
+	if "" == indexPath {
 		indexPath = "/" + strings.ReplaceAll(indexPage, ".", "/")
 	}
 

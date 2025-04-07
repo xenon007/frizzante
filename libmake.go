@@ -25,10 +25,10 @@ func createIndex(indexName string) {
 		}
 	}
 
-	indexName = strings.ReplaceAll(indexName, "-", "_")
+	indexName = strings.Trim(strings.ReplaceAll(indexName, "-", "_"), "\r\n\t ")
 
-	indexNameCamel := strings.Trim(strings.ToLower(indexName[0:1])+indexName[1:], "\r\n\t ")
-	indexNamePascal := strings.Trim(strings.ToTitle(indexName[0:1])+indexName[1:], "\r\n\t ")
+	indexNameCamel := strings.ToLower(indexName[0:1]) + indexName[1:]
+	indexNamePascal := strings.ToTitle(indexName[0:1]) + indexName[1:]
 
 	oldFileName := "templates/indexes/example.go"
 	newFileName := filepath.Join("lib", "indexes", indexNameCamel+".go")
@@ -42,19 +42,29 @@ func createIndex(indexName string) {
 	}
 
 	// Index.
-	oldTitle := []byte("func Index")
-	newTitle := []byte("func " + indexNamePascal)
-	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
+	oldName := []byte("func Index")
+	newName := []byte("func " + indexNamePascal)
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
+
+	// Path.
+	oldName = []byte("\"/path\"")
+	newName = []byte("\"/" + indexName + "\"")
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
+
+	// Page.
+	oldName = []byte("\"page\"")
+	newName = []byte("\"" + indexName + "\"")
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
 
 	// Show.
-	oldTitle = []byte("indexShow")
-	newTitle = []byte(indexNameCamel + "Show")
-	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
+	oldName = []byte("indexShowFunction")
+	newName = []byte(indexNameCamel + "ShowFunction")
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
 
 	// Action.
-	oldTitle = []byte("indexAction")
-	newTitle = []byte(indexNameCamel + "Action")
-	readBytes = bytes.ReplaceAll(readBytes, oldTitle, newTitle)
+	oldName = []byte("indexActionFunction")
+	newName = []byte(indexNameCamel + "ActionFunction")
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
 
 	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
 	if writeError != nil {
@@ -74,10 +84,10 @@ func createGuard(guardName string) {
 		}
 	}
 
-	guardName = strings.ReplaceAll(guardName, "-", "_")
+	guardName = strings.Trim(strings.ReplaceAll(guardName, "-", "_"), "\r\n\t ")
 
-	guardNameCamel := strings.Trim(strings.ToLower(guardName[0:1])+guardName[1:], "\r\n\t ")
-	guardNamePascal := strings.Trim(strings.ToTitle(guardName[0:1])+guardName[1:], "\r\n\t ")
+	guardNameCamel := strings.ToLower(guardName[0:1]) + guardName[1:]
+	guardNamePascal := strings.ToTitle(guardName[0:1]) + guardName[1:]
 
 	oldFileName := "templates/guards/example.go"
 	newFileName := filepath.Join("lib", "guards", guardNameCamel+".go")
@@ -118,10 +128,10 @@ func createPage(pageName string) {
 		}
 	}
 
-	pageName = strings.ReplaceAll(pageName, "-", "_")
+	pageName = strings.Trim(strings.ReplaceAll(pageName, "-", "_"), "\r\n\t ")
 
-	//pageNameCamel := strings.Trim(strings.ToLower(pageName[0:1])+pageName[1:], "\r\n\t ")
-	pageNamePascal := strings.Trim(strings.ToTitle(pageName[0:1])+pageName[1:], "\r\n\t ")
+	//pageNameCamel := strings.ToLower(pageName[0:1])+pageName[1:]
+	pageNamePascal := strings.ToTitle(pageName[0:1]) + pageName[1:]
 
 	oldFileName := "templates/pages/example.svelte"
 	newFileName := filepath.Join("lib", "pages", pageNamePascal+".svelte")
@@ -134,11 +144,6 @@ func createPage(pageName string) {
 		fmt.Printf("Page `%s` already exists.\n", pageNamePascal)
 		return
 	}
-
-	// Page.
-	oldPage := []byte("\"page\"")
-	newPage := []byte("\"" + pageName + "\"")
-	readBytes = bytes.ReplaceAll(readBytes, oldPage, newPage)
 
 	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
 	if writeError != nil {

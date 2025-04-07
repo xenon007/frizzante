@@ -15,20 +15,17 @@ func TestRenderServer(test *testing.T) {
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithNotifier(server, notifier)
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithIndex(server,
-		func() (
-			page string,
-			show PageFunction,
-			action PageFunction,
-		) {
-			page = "welcome"
-			show = func(req *Request, res *Response, p *Page) {
-				PageWithRender(p, RenderServer)
-				PageWithData(p, "name", "world")
-			}
-			return
-		},
-	)
+	ServerWithIndex(server, func(
+		route func(path string, page string),
+		show func(showFunction PageFunction),
+		action func(actionFunction PageFunction),
+	) {
+		route("/", "welcome")
+		show(func(req *Request, res *Response, p *Page) {
+			PageWithRender(p, RenderServer)
+			PageWithData(p, "name", "world")
+		})
+	})
 	go ServerStart(server)
 	time.Sleep(1 * time.Second)
 
@@ -53,20 +50,17 @@ func TestRenderClient(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithIndex(server,
-		func() (
-			page string,
-			show PageFunction,
-			action PageFunction,
-		) {
-			page = "welcome /"
-			show = func(req *Request, res *Response, p *Page) {
-				PageWithRender(p, RenderClient)
-				PageWithData(p, "name", "world")
-			}
-			return
-		},
-	)
+	ServerWithIndex(server, func(
+		route func(path string, page string),
+		show func(showFunction PageFunction),
+		action func(actionFunction PageFunction),
+	) {
+		route("/", "welcome")
+		show(func(req *Request, res *Response, p *Page) {
+			PageWithRender(p, RenderClient)
+			PageWithData(p, "name", "world")
+		})
+	})
 	go ServerStart(server)
 	time.Sleep(1 * time.Second)
 
