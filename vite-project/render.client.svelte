@@ -21,9 +21,10 @@
         /**
          * @param {string} page
          * @param {Record<string,string>} [parameters]
+         * @param {false|Record<string,any>} [data]
          */
-        function (page, parameters) {
-            navigate(page, "push", parameters)
+        function (page, parameters, data = false) {
+            navigate(page, "push", parameters, data)
         }
     )
     setContext("path", path)
@@ -133,8 +134,9 @@
      * @param {string} page
      * @param {"back"|"forward"|"push"} modifier
      * @param {Record<string,string>} [parameters]
+     * @param {false|Record<string,any>} [data]
      */
-    function navigate(page, modifier, parameters) {
+    function navigate(page, modifier, parameters, data = false) {
         if (!pages[page]) {
             return
         }
@@ -148,6 +150,10 @@
             }, "", pathLocal);
         }
         pageState = page
+
+        if(false !== data){
+            return
+        }
 
         fetch(pathLocal, {headers: {"Accept": "application/json"}}).then(async (response) => {
             const data = await response.json()

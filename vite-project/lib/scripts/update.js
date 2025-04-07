@@ -1,7 +1,7 @@
 /**
  * @typedef DonePayload
  * @property {function(string):{page:string,parameters:Record<string,string>}} page
- * @property {function(string,Record<string,string>)} navigate
+ * @property {function(string,Record<string,string>,false|Record<string,any>)} navigate
  * @property {string} query
  * @property {Record<string,any>} data
  */
@@ -45,7 +45,7 @@ function done(payload) {
 
                 if (response.redirected) {
                     const resolved = page(response.url.replace(window.location.origin, ""))
-                    navigate(resolved.page, resolved.parameters)
+                    navigate(resolved.page, resolved.parameters, responseData)
                 }
             })
             .catch(fail)
@@ -62,7 +62,7 @@ function fail(reason) {
 /**
  * @typedef UpdatePayload
  * @property {function(string):{page:string,parameters:Record<string,string>}} page
- * @property {function(string,Record<string,string>)} navigate
+ * @property {function(string,Record<string,string>,false|Record<string,any>)} navigate
  * @property {Record<string,any>} data
  */
 
@@ -94,6 +94,7 @@ export function update(payload) {
                 query,
                 data,
             }
+
             fetch(query, init).then(done(donePayload)).catch(fail)
             return
         }
