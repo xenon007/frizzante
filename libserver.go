@@ -16,7 +16,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -43,6 +42,7 @@ type Server struct {
 	notifier               *Notifier
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
+	pagesMapped            map[string]bool
 	webSocketUpgrader      *websocket.Upgrader
 	sessionOperator        func(string) (
 		get func(key string, defaultValue any) (value any),
@@ -80,6 +80,7 @@ func ServerCreate() *Server {
 		certificateKey:         "",
 		temporaryDirectory:     ".temp",
 		notifier:               NotifierCreate(),
+		pagesMapped:            map[string]bool{},
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -1340,28 +1341,25 @@ func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
 
 type WireFunction = func()
 type LoadFunction = func(wire WireFunction)
+type IndexFunction = func() (
+	page string,
+	show PageFunction,
+	action PageFunction,
+)
 
 // ServerWithIndex adds an index.
-func ServerWithIndex(
-	self *Server,
-	index func() (
-		page string,
-		show PageFunction,
-		action PageFunction,
-	),
-) {
-	var indexPage string
-	var indexPath string
+func ServerWithIndex(self *Server, index IndexFunction) {
+	indexPage := ""
+	indexPath := ""
 
-	pattern, show, action := index()
+	page, show, action := index()
 
-	if "" == pattern {
-		t := reflect.TypeOf(index)
-		NotifierSendError(self.notifier, fmt.Errorf("invalid empty pattern for index `%s`", t.Name()))
+	if "" == page {
+		NotifierSendError(self.notifier, fmt.Errorf("could not add index because page is empty"))
 		return
 	}
 
-	patternItems := strings.SplitN(pattern, " ", 2)
+	patternItems := strings.SplitN(page, " ", 2)
 	patternItemsLen := len(patternItems)
 
 	if patternItemsLen >= 1 {
@@ -1374,15 +1372,24 @@ func ServerWithIndex(
 		indexPath = "/" + strings.ReplaceAll(indexPage, ".", "/")
 	}
 
+	_, alreadyMapped := self.pagesMapped[indexPage]
+
+	if alreadyMapped {
+		NotifierSendError(self.notifier, fmt.Errorf("could not add index because page `%s` is already mapped by a different index", indexPage))
+		return
+	}
+
 	if "" == indexPage {
-		NotifierSendError(self.notifier, errors.New("could not add index because page is unknown"))
+		NotifierSendError(self.notifier, fmt.Errorf("could not add index because page `%s` is unknown", indexPage))
 		return
 	}
 
 	if "" == indexPath {
-		NotifierSendError(self.notifier, errors.New("could not add index because path is unknown"))
+		NotifierSendError(self.notifier, fmt.Errorf("could not add index because path `%s` is unknown", indexPath))
 		return
 	}
+
+	self.pagesMapped[indexPage] = true
 
 	if nil == show {
 		show = func(req *Request, res *Response, p *Page) {
