@@ -37,7 +37,7 @@ func createIndex(indexName string) {
 		panic(readError)
 	}
 	if Exists(newFileName) {
-		fmt.Printf("Index `%s` already exists.", indexNameCamel)
+		fmt.Printf("Index `%s` already exists.\n", indexNameCamel)
 		return
 	}
 
@@ -87,7 +87,7 @@ func createGuard(guardName string) {
 	}
 
 	if Exists(newFileName) {
-		fmt.Printf("Guard `%s` already exists.", guardNameCamel)
+		fmt.Printf("Guard `%s` already exists.\n", guardNameCamel)
 		return
 	}
 
@@ -131,9 +131,14 @@ func createPage(pageName string) {
 	}
 
 	if Exists(newFileName) {
-		fmt.Printf("Page `%s` already exists.", pageNamePascal)
+		fmt.Printf("Page `%s` already exists.\n", pageNamePascal)
 		return
 	}
+
+	// Page.
+	oldPage := []byte("\"page\"")
+	newPage := []byte("\"" + pageName + "\"")
+	readBytes = bytes.ReplaceAll(readBytes, oldPage, newPage)
 
 	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
 	if writeError != nil {

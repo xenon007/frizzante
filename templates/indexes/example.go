@@ -11,10 +11,12 @@ func indexAction(_ *f.Request, _ *f.Response, _ *f.Page) {
 }
 
 func Index() (
-	s f.PageFunction,
-	a f.PageFunction,
+	page string,
+	show f.PageFunction,
+	action f.PageFunction,
 ) {
-	s = indexShow
-	a = indexAction
+	page = "page"
+	show = indexShow
+	action = indexAction
 	return
 }

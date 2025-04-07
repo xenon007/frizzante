@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -1340,27 +1341,48 @@ func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
 type WireFunction = func()
 type LoadFunction = func(wire WireFunction)
 
-// ServerWithPage adds a page.
-func ServerWithPage(
+// ServerWithIndex adds an index.
+func ServerWithIndex(
 	self *Server,
-	path string,
-	page string,
 	index func() (
+		page string,
 		show PageFunction,
 		action PageFunction,
 	),
 ) {
-	if "" == path {
-		NotifierSendError(self.notifier, errors.New("could not add index because path is unknown"))
+	var indexPage string
+	var indexPath string
+
+	pattern, show, action := index()
+
+	if "" == pattern {
+		t := reflect.TypeOf(index)
+		NotifierSendError(self.notifier, fmt.Errorf("invalid empty pattern for index `%s`", t.Name()))
 		return
 	}
 
-	if "" == page {
+	patternItems := strings.SplitN(pattern, " ", 2)
+	patternItemsLen := len(patternItems)
+
+	if patternItemsLen >= 1 {
+		indexPage = patternItems[0]
+	}
+
+	if patternItemsLen >= 2 {
+		indexPath = patternItems[1]
+	} else {
+		indexPath = "/" + strings.ReplaceAll(indexPage, ".", "/")
+	}
+
+	if "" == indexPage {
 		NotifierSendError(self.notifier, errors.New("could not add index because page is unknown"))
 		return
 	}
 
-	show, action := index()
+	if "" == indexPath {
+		NotifierSendError(self.notifier, errors.New("could not add index because path is unknown"))
+		return
+	}
 
 	if nil == show {
 		show = func(req *Request, res *Response, p *Page) {
@@ -1374,8 +1396,8 @@ func ServerWithPage(
 		}
 	}
 
-	serverMap(self, "GET "+path, routeCreateWithPage(page, show))
-	serverMap(self, "POST "+path, routeCreateWithPage(page, action))
+	serverMap(self, "GET "+indexPath, routeCreateWithPage(indexPage, show))
+	serverMap(self, "POST "+indexPath, routeCreateWithPage(indexPage, action))
 }
 
 type PageGuardFunction = func(req *Request, res *Response, p *Page, pass func())

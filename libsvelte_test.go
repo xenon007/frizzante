@@ -15,11 +15,13 @@ func TestRenderServer(test *testing.T) {
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithNotifier(server, notifier)
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithPage(server, "/", "Welcome",
+	ServerWithIndex(server,
 		func() (
+			page string,
 			show PageFunction,
 			action PageFunction,
 		) {
+			page = "welcome"
 			show = func(req *Request, res *Response, p *Page) {
 				PageWithRender(p, RenderServer)
 				PageWithData(p, "name", "world")
@@ -31,7 +33,7 @@ func TestRenderServer(test *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	expected := "<h1>Hello world.</h1>"
-	actual, getError := HttpGet(fmt.Sprintf("http://127.0.0.1:%d/", port), nil)
+	actual, getError := HttpGet(fmt.Sprintf("http://127.0.0.1:%d/welcome", port), nil)
 	if getError != nil {
 		test.Fatal(getError)
 	}
@@ -51,11 +53,13 @@ func TestRenderClient(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithPage(server, "/", "Welcome",
+	ServerWithIndex(server,
 		func() (
+			page string,
 			show PageFunction,
 			action PageFunction,
 		) {
+			page = "welcome /"
 			show = func(req *Request, res *Response, p *Page) {
 				PageWithRender(p, RenderClient)
 				PageWithData(p, "name", "world")
