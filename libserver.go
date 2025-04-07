@@ -42,7 +42,6 @@ type Server struct {
 	notifier               *Notifier
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
-	pagesMapped            map[string]bool
 	webSocketUpgrader      *websocket.Upgrader
 	sessionOperator        func(string) (
 		get func(key string, defaultValue any) (value any),
@@ -80,7 +79,6 @@ func ServerCreate() *Server {
 		certificateKey:         "",
 		temporaryDirectory:     ".temp",
 		notifier:               NotifierCreate(),
-		pagesMapped:            map[string]bool{},
 		webSocketUpgrader: &websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -1374,13 +1372,6 @@ func ServerWithIndex(
 		indexPath = "/" + strings.ReplaceAll(indexPage, ".", "/")
 	}
 
-	_, alreadyMapped := self.pagesMapped[indexPage]
-
-	if alreadyMapped {
-		NotifierSendError(self.notifier, fmt.Errorf("could not add index because page `%s` is already mapped by a different index", indexPage))
-		return
-	}
-
 	if "" == indexPage {
 		NotifierSendError(self.notifier, fmt.Errorf("could not add index because page `%s` is unknown", indexPage))
 		return
@@ -1390,8 +1381,6 @@ func ServerWithIndex(
 		NotifierSendError(self.notifier, fmt.Errorf("could not add index because path `%s` is unknown", indexPath))
 		return
 	}
-
-	self.pagesMapped[indexPage] = true
 
 	if nil == show {
 		show = func(req *Request, res *Response, p *Page) {

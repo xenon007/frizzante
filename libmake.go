@@ -131,17 +131,17 @@ func createPage(pageName string) {
 	pageName = strings.Trim(strings.ReplaceAll(pageName, "-", "_"), "\r\n\t ")
 
 	//pageNameCamel := strings.ToLower(pageName[0:1])+pageName[1:]
-	pageNamePascal := strings.ToTitle(pageName[0:1]) + pageName[1:]
+	//pageNamePascal := strings.ToTitle(pageName[0:1]) + pageName[1:]
 
 	oldFileName := "templates/pages/example.svelte"
-	newFileName := filepath.Join("lib", "pages", pageNamePascal+".svelte")
+	newFileName := filepath.Join("lib", "pages", pageName+".svelte")
 	readBytes, readError := templates.ReadFile(oldFileName)
 	if nil != readError {
 		panic(readError)
 	}
 
 	if Exists(newFileName) {
-		fmt.Printf("Page `%s` already exists.\n", pageNamePascal)
+		fmt.Printf("Page `%s` already exists.\n", pageName)
 		return
 	}
 
