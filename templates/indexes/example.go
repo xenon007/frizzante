@@ -18,5 +18,4 @@ func Index(
 	route("/path", "page")
 	show(indexShowFunction)
 	action(indexActionFunction)
-	return
 }
