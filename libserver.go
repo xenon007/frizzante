@@ -1339,7 +1339,7 @@ func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
 
 type WireFunction = func()
 type LoadFunction = func(wire WireFunction)
-type IndexFunction = func(
+type Index = func(
 	route func(path string, page string),
 	show func(showFunction PageFunction),
 	action func(actionFunction PageFunction),
@@ -1348,7 +1348,7 @@ type IndexFunction = func(
 // ServerWithIndex adds an index.
 func ServerWithIndex(
 	self *Server,
-	index IndexFunction,
+	index Index,
 ) {
 	indexPage := ""
 	indexPath := ""
@@ -1398,9 +1398,9 @@ func ServerWithIndex(
 	serverMap(self, "POST "+indexPath, routeCreateWithPage(indexPage, action))
 }
 
-type PageGuardFunction = func(req *Request, res *Response, p *Page, pass func())
+type IndexGuard = func(req *Request, res *Response, p *Page, pass func())
 
-// ServerWithPageGuard adds a page guard, a function that executes before every api page.
-func ServerWithPageGuard(self *Server, guard PageGuardFunction) {
+// ServerWithIndexGuard adds an index guard, a function that executes before every index executes.
+func ServerWithIndexGuard(self *Server, guard IndexGuard) {
 	self.pageGuards = append(self.pageGuards, guard)
 }
