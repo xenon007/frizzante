@@ -59,17 +59,17 @@ func prepareLib() error {
 		return renderServerJsError
 	}
 
-	formSvelte, formSvelteError := viteProject.ReadFile("vite-project/lib/components/form.svelte")
+	formSvelte, formSvelteError := viteProject.ReadFile("vite-project/lib/components/Form.svelte")
 	if formSvelteError != nil {
 		return formSvelteError
 	}
 
-	submitSvelte, submitSvelteError := viteProject.ReadFile("vite-project/lib/components/submit.svelte")
+	submitSvelte, submitSvelteError := viteProject.ReadFile("vite-project/lib/components/Submit.svelte")
 	if submitSvelteError != nil {
 		return submitSvelteError
 	}
 
-	linkSvelte, linkSvelteError := viteProject.ReadFile("vite-project/lib/components/link.svelte")
+	linkSvelte, linkSvelteError := viteProject.ReadFile("vite-project/lib/components/Link.svelte")
 	if linkSvelteError != nil {
 		return linkSvelteError
 	}
@@ -125,17 +125,17 @@ func prepareLib() error {
 		}
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/components/form.svelte", formSvelte, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/components/Form.svelte", formSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/components/submit.svelte", submitSvelte, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/components/Submit.svelte", submitSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(".frizzante/vite-project/lib/components/link.svelte", linkSvelte, os.ModePerm)
+	err = os.WriteFile(".frizzante/vite-project/lib/components/Link.svelte", linkSvelte, os.ModePerm)
 	if err != nil {
 		return err
 	}
