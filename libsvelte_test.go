@@ -15,7 +15,7 @@ func TestRenderServer(test *testing.T) {
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithNotifier(server, notifier)
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithPage(server, "/", "welcome",
+	ServerWithPage(server, "/", "Welcome",
 		func() (
 			show PageFunction,
 			action PageFunction,
@@ -51,7 +51,7 @@ func TestRenderClient(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	ServerWithHostName(server, "127.0.0.1")
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
-	ServerWithPage(server, "/", "welcome",
+	ServerWithPage(server, "/", "Welcome",
 		func() (
 			show PageFunction,
 			action PageFunction,
