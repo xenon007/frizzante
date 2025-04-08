@@ -43,14 +43,17 @@ type Server struct {
 	temporaryDirectory     string
 	embeddedFileSystem     embed.FS
 	webSocketUpgrader      *websocket.Upgrader
-	sessionOperator        func(string) (
-		get func(key string, defaultValue any) (value any),
-		set func(key string, value any),
-		unset func(key string),
-		validate func() (valid bool),
-		destroy func(),
-	)
+	sessionOperator        SessionOperator
 }
+
+type SessionOperator = func(
+	sessionId string,
+	withGetter func(get func(key string, defaultValue any) (value any)),
+	withSetter func(set func(key string, value any)),
+	withUnsetter func(unset func(key string)),
+	withValidator func(validate func() (valid bool)),
+	withDestroyer func(destroy func()),
+)
 
 type sessionStore struct {
 	createdAt      time.Time
@@ -83,24 +86,25 @@ func ServerCreate() *Server {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
-		sessionOperator: func(id string) (
-			get func(key string, defaultValue any) (value any),
-			set func(key string, value any),
-			unset func(key string),
-			validate func() (valid bool),
-			destroy func(),
+		sessionOperator: func(
+			sessionId string,
+			withGetter func(get func(key string, defaultValue any) (value any)),
+			withSetter func(func(key string, value any)),
+			withUnsetter func(func(key string)),
+			withValidator func(func() (valid bool)),
+			withDestroyer func(func()),
 		) {
-			store, exists := memory[id]
+			store, exists := memory[sessionId]
 			if !exists {
 				store = sessionStore{
 					data:           map[string]any{},
 					createdAt:      time.Now(),
 					lastActivityAt: time.Now(),
 				}
-				memory[id] = store
+				memory[sessionId] = store
 			}
 
-			get = func(key string, defaultValue any) (value any) {
+			withGetter(func(key string, defaultValue any) (value any) {
 				sessionItem, ok := store.data[key]
 				if !ok {
 					store.data[key] = defaultValue
@@ -112,28 +116,27 @@ func ServerCreate() *Server {
 				store.lastActivityAt = time.Now()
 				value = sessionItem
 				return
-			}
+			})
 
-			set = func(key string, value any) {
+			withSetter(func(key string, value any) {
 				store.lastActivityAt = time.Now()
 				store.data[key] = value
-			}
+			})
 
-			unset = func(key string) {
+			withUnsetter(func(key string) {
 				store.lastActivityAt = time.Now()
 				delete(store.data, key)
-			}
+			})
 
-			validate = func() (valid bool) {
+			withValidator(func() (valid bool) {
 				elapsedSeconds := time.Since(store.lastActivityAt).Minutes()
 				valid = elapsedSeconds < 30
 				return
-			}
+			})
 
-			destroy = func() {
-				delete(memory, id)
-			}
-			return
+			withDestroyer(func() {
+				delete(memory, sessionId)
+			})
 		},
 	}
 }
@@ -1291,7 +1294,7 @@ func SendPage(self *Response, page *Page) {
 // operations used by the server to manage any session,
 // get, set, unset and destroy.
 //
-// Get must retriedataata from the session store.
+// Get must retrieve data from the session store.
 //
 // Set must create a new property to the session store or update an existing one.
 //
@@ -1307,13 +1310,7 @@ func SendPage(self *Response, page *Page) {
 // implementation of the four operations.
 func ServerWithSessionOperator(
 	self *Server,
-	sessionOperator func(string) (
-		get func(key string, defaultValue any) (value any),
-		set func(key string, value any),
-		unset func(key string),
-		validate func() (valid bool),
-		destroy func(),
-	),
+	sessionOperator SessionOperator,
 ) {
 	self.sessionOperator = sessionOperator
 }

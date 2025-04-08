@@ -45,26 +45,46 @@ func SessionStart(request *Request, response *Response) (
 		}
 
 		sessionId := uuidV4.String()
-		sessionGet,
-			sessionSet,
-			sessionUnset,
-			sessionValidate,
-			sessionDestroy := request.server.sessionOperator(sessionId)
+
+		var sessionGetter func(key string, defaultValue any) (value any)
+		var sessionSetter func(key string, value any)
+		var sessionUnsetter func(key string)
+		var sessionValidator func() (valid bool)
+		var sessionDestroyer func()
+
+		request.server.sessionOperator(
+			sessionId,
+			func(get func(key string, defaultValue any) (value any)) {
+				sessionGetter = get
+			},
+			func(set func(key string, value any)) {
+				sessionSetter = set
+			},
+			func(unset func(key string)) {
+				sessionUnsetter = unset
+			},
+			func(validate func() (valid bool)) {
+				sessionValidator = validate
+			},
+			func(destroy func()) {
+				sessionDestroyer = destroy
+			},
+		)
 
 		freshSession := &Session{
 			id:       sessionId,
-			get:      sessionGet,
-			set:      sessionSet,
-			unset:    sessionUnset,
-			validate: sessionValidate,
-			destroy:  sessionDestroy,
+			get:      sessionGetter,
+			set:      sessionSetter,
+			unset:    sessionUnsetter,
+			validate: sessionValidator,
+			destroy:  sessionDestroyer,
 		}
 
 		SendCookie(response, "session-id", freshSession.id)
 		sessions[freshSession.id] = freshSession
-		get = sessionGet
-		set = sessionSet
-		unset = sessionUnset
+		get = sessionGetter
+		set = sessionSetter
+		unset = sessionUnsetter
 		return
 	}
 
@@ -85,26 +105,46 @@ func SessionStart(request *Request, response *Response) (
 			NotifierSendError(request.server.notifier, sessionIdError)
 		}
 		sessionId := uuidV4.String()
-		sessionGet,
-			sessionSet,
-			sessionUnset,
-			sessionValidate,
-			sessionDestroy := request.server.sessionOperator(sessionId)
+
+		var sessionGetter func(key string, defaultValue any) (value any)
+		var sessionSetter func(key string, value any)
+		var sessionUnsetter func(key string)
+		var sessionValidator func() (valid bool)
+		var sessionDestroyer func()
+
+		request.server.sessionOperator(
+			sessionId,
+			func(get func(key string, defaultValue any) (value any)) {
+				sessionGetter = get
+			},
+			func(set func(key string, value any)) {
+				sessionSetter = set
+			},
+			func(unset func(key string)) {
+				sessionUnsetter = unset
+			},
+			func(validate func() (valid bool)) {
+				sessionValidator = validate
+			},
+			func(destroy func()) {
+				sessionDestroyer = destroy
+			},
+		)
 
 		freshSession := &Session{
 			id:       sessionId,
-			get:      sessionGet,
-			set:      sessionSet,
-			unset:    sessionUnset,
-			validate: sessionValidate,
-			destroy:  sessionDestroy,
+			get:      sessionGetter,
+			set:      sessionSetter,
+			unset:    sessionUnsetter,
+			validate: sessionValidator,
+			destroy:  sessionDestroyer,
 		}
 
 		SendCookie(response, "session-id", freshSession.id)
 		sessions[freshSession.id] = freshSession
-		get = sessionGet
-		set = sessionSet
-		unset = sessionUnset
+		get = sessionGetter
+		set = sessionSetter
+		unset = sessionUnsetter
 		return
 	}
 
