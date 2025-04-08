@@ -46,13 +46,19 @@ type Server struct {
 	sessionOperator        SessionOperator
 }
 
+type SessionGetter = func(key string, defaultValue any) (value any)
+type SessionSetter = func(key string, value any)
+type SessionUnsetter = func(key string)
+type SessionValidator = func() (valid bool)
+type SessionDestroyer = func()
+
 type SessionOperator = func(
 	sessionId string,
-	withGetter func(get func(key string, defaultValue any) (value any)),
-	withSetter func(set func(key string, value any)),
-	withUnsetter func(unset func(key string)),
-	withValidator func(validate func() (valid bool)),
-	withDestroyer func(destroy func()),
+	withGetter func(get SessionGetter),
+	withSetter func(set SessionSetter),
+	withUnsetter func(unset SessionUnsetter),
+	withValidator func(validate SessionValidator),
+	withDestroyer func(destroy SessionDestroyer),
 )
 
 type sessionStore struct {
@@ -88,12 +94,13 @@ func ServerCreate() *Server {
 		},
 		sessionOperator: func(
 			sessionId string,
-			withGetter func(get func(key string, defaultValue any) (value any)),
-			withSetter func(func(key string, value any)),
-			withUnsetter func(func(key string)),
-			withValidator func(func() (valid bool)),
-			withDestroyer func(func()),
+			withGetter func(get SessionGetter),
+			withSetter func(set SessionSetter),
+			withUnsetter func(unset SessionUnsetter),
+			withValidator func(validate SessionValidator),
+			withDestroyer func(destroy SessionDestroyer),
 		) {
+
 			store, exists := memory[sessionId]
 			if !exists {
 				store = sessionStore{
