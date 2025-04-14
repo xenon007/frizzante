@@ -23,6 +23,7 @@ import (
 )
 
 type PageFunction = func(req *Request, res *Response, p *Page)
+type ApiFunction = func(req *Request, res *Response)
 
 type Server struct {
 	hostName               string
@@ -451,6 +452,16 @@ func ReceiveContentType(self *Request) string {
 	return self.httpRequest.Header.Get("Content-Type")
 }
 
+func notFoundApi(
+	route RouteApiFunction,
+	serve ServeApiFunction,
+) {
+	route("GET /")
+	serve(func(req *Request, res *Response) {
+		SendStatus(res, 404)
+	})
+}
+
 // ServerStart starts the server.
 //
 // If the server fails to start, ServerStart panics.
@@ -466,11 +477,7 @@ func ServerStart(self *Server) {
 	}
 
 	if !entryCreated {
-		ServerWithApi(self, "GET /",
-			func(request *Request, response *Response) {
-				SendStatus(response, 404)
-			},
-		)
+		ServerWithApi(self, notFoundApi)
 	}
 
 	var waiter sync.WaitGroup
@@ -653,10 +660,10 @@ func routeCreateWithPage(
 
 var entryCreated = false
 
-// serverMap maps a pattern to a given route.
+// serverMapRoute maps a pattern to a given route.
 //
-// If the given pattern conflicts with one that is already registered, serverMap panics.
-func serverMap(
+// If the given pattern conflicts with one that is already registered, serverMapRoute panics.
+func serverMapRoute(
 	self *Server,
 	pattern string,
 	route *Route,
@@ -789,7 +796,7 @@ func SendRedirect(self *Response, location string, statusCode int) {
 	SendHeader(self, "Location", location)
 }
 
-var pathFieldRegex = regexp.MustCompile(`\{(.*?)\}`)
+var pathFieldRegex = regexp.MustCompile(`\{(.*?)}`)
 
 // SendRedirectToSecure tries to redirect the request to the https server.
 //
@@ -1236,15 +1243,22 @@ func createReaderFromEmbeddedFileName(efs *embed.FS, fileName string) (*bytes.Re
 		return nil, nil, openError
 	}
 
-	defer file.Close()
 	fileInfo, _ := file.Stat()
 
 	buffer := make([]byte, fileInfo.Size())
 	_, readError := file.Read(buffer)
 	if readError != nil {
+		closeError := file.Close()
+		if closeError != nil {
+			return nil, nil, closeError
+		}
 		return nil, nil, readError
 	}
 
+	closeError := file.Close()
+	if closeError != nil {
+		return nil, nil, closeError
+	}
 	return bytes.NewReader(buffer), &fileInfo, nil
 }
 
@@ -1254,15 +1268,22 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 		return nil, nil, openError
 	}
 
-	defer file.Close()
 	fileInfo, _ := file.Stat()
 
 	buffer := make([]byte, fileInfo.Size())
 	_, readError := file.Read(buffer)
 	if readError != nil {
+		closeError := file.Close()
+		if closeError != nil {
+			return nil, nil, closeError
+		}
 		return nil, nil, readError
 	}
 
+	closeError := file.Close()
+	if closeError != nil {
+		return nil, nil, closeError
+	}
 	return bytes.NewReader(buffer), &fileInfo, nil
 }
 
@@ -1274,7 +1295,12 @@ func SendWebSocketUpgrade(self *Response, callback func()) {
 		NotifierSendError(request.server.notifier, upgradeError)
 		return
 	}
-	defer conn.Close()
+	defer func(conn *websocket.Conn) {
+		closeError := conn.Close()
+		if closeError != nil {
+			NotifierSendError(request.server.notifier, closeError)
+		}
+	}(conn)
 	self.webSocket = conn
 	request.webSocketConn = conn
 	self.lockedStatusAndHeader = true
@@ -1322,16 +1348,45 @@ func ServerWithSessionOperator(
 	self.sessionOperator = sessionOperator
 }
 
+type RouteApiFunction = func(pattern string)
+type ServeApiFunction = func(apiFunction ApiFunction)
+
+type Api = func(
+	route func(pattern string),
+	serve func(apiFunction ApiFunction),
+)
+
 // ServerWithApi adds an api.
 func ServerWithApi(
 	self *Server,
-	pattern string,
-	callback func(
-		request *Request,
-		response *Response,
-	),
+	api Api,
 ) {
-	serverMap(self, pattern, routeCreate(callback))
+	var patterns []string
+	var serve ApiFunction
+
+	api(
+		func(pattern string) {
+			patterns = append(patterns, pattern)
+		},
+		func(serveFunction ApiFunction) {
+			serve = serveFunction
+		},
+	)
+
+	if nil == serve {
+		serve = func(req *Request, res *Response) {
+			// Noop.
+		}
+	}
+
+	for _, pattern := range patterns {
+		if "" == pattern {
+			NotifierSendError(self.notifier, fmt.Errorf("could not add api because path is empty"))
+			return
+		}
+		serverMapRoute(self, pattern, routeCreate(serve))
+	}
+
 }
 
 type ApiGuardFunction = func(req *Request, res *Response, pass func())
@@ -1343,10 +1398,13 @@ func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
 
 type WireFunction = func()
 type LoadFunction = func(wire WireFunction)
+type RoutePageFunction = func(path string, page string)
+type ShowPageFunction = func(showFunction PageFunction)
+type ActionPageFunction = func(actionFunction PageFunction)
 type Index = func(
-	route func(path string, page string),
-	show func(showFunction PageFunction),
-	action func(actionFunction PageFunction),
+	route RoutePageFunction,
+	show ShowPageFunction,
+	action ActionPageFunction,
 )
 
 // ServerWithIndex adds an index.
@@ -1398,8 +1456,8 @@ func ServerWithIndex(
 		}
 	}
 
-	serverMap(self, "GET "+indexPath, routeCreateWithPage(indexPage, show))
-	serverMap(self, "POST "+indexPath, routeCreateWithPage(indexPage, action))
+	serverMapRoute(self, "GET "+indexPath, routeCreateWithPage(indexPage, show))
+	serverMapRoute(self, "POST "+indexPath, routeCreateWithPage(indexPage, action))
 }
 
 type IndexGuard = func(req *Request, res *Response, p *Page, pass func())

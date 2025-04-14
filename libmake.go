@@ -14,7 +14,72 @@ import (
 //go:embed templates/*/**
 var templates embed.FS
 
+func createApi(apiName string) {
+	fileName := filepath.Join("lib", "api")
+	if !Exists(fileName) {
+		writeError := os.MkdirAll(fileName, os.ModePerm)
+		if writeError != nil {
+			panic(writeError)
+		}
+	}
+
+	if "" == apiName {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Name the api: ")
+		apiName, _ = reader.ReadString('\n')
+		if "" == apiName {
+			createApi(apiName)
+			return
+		}
+	}
+
+	apiName = strings.Trim(strings.ReplaceAll(apiName, "-", "_"), "\r\n\t ")
+
+	apiNameCamel := strings.ToLower(apiName[0:1]) + apiName[1:]
+	apiNamePascal := strings.ToTitle(apiName[0:1]) + apiName[1:]
+
+	oldFileName := "templates/api/example.go"
+	newFileName := filepath.Join("lib", "api", apiNameCamel+".go")
+	readBytes, readError := templates.ReadFile(oldFileName)
+	if nil != readError {
+		panic(readError)
+	}
+	if Exists(newFileName) {
+		fmt.Printf("Api `%s` already exists.\n", apiNameCamel)
+		return
+	}
+
+	// Api.
+	oldName := []byte("func Api")
+	newName := []byte("func " + apiNamePascal)
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
+
+	// Pattern.
+	oldName = []byte("\"GET /\"")
+	newName = []byte("\"GET /api/" + apiNameCamel + "\"")
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
+
+	// Serve.
+	oldName = []byte("serveFunction")
+	newName = []byte(apiNameCamel + "ServeFunction")
+	readBytes = bytes.ReplaceAll(readBytes, oldName, newName)
+
+	writeError := os.WriteFile(newFileName, readBytes, os.ModePerm)
+	if writeError != nil {
+		panic(writeError)
+	}
+
+}
+
 func createIndex(indexName string) {
+	fileName := filepath.Join("lib", "indexes")
+	if !Exists(fileName) {
+		writeError := os.MkdirAll(fileName, os.ModePerm)
+		if writeError != nil {
+			panic(writeError)
+		}
+	}
+
 	if "" == indexName {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Name the index: ")
@@ -74,12 +139,20 @@ func createIndex(indexName string) {
 }
 
 func createGuard(guardName string) {
+	fileName := filepath.Join("lib", "guards")
+	if !Exists(fileName) {
+		writeError := os.MkdirAll(fileName, os.ModePerm)
+		if writeError != nil {
+			panic(writeError)
+		}
+	}
+
 	if "" == guardName {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Name the guard: ")
 		guardName, _ = reader.ReadString('\n')
 		if "" == guardName {
-			createIndex(guardName)
+			createGuard(guardName)
 			return
 		}
 	}
@@ -118,12 +191,20 @@ func createGuard(guardName string) {
 }
 
 func createPage(pageName string) {
+	fileName := filepath.Join("lib", "pages")
+	if !Exists(fileName) {
+		writeError := os.MkdirAll(fileName, os.ModePerm)
+		if writeError != nil {
+			panic(writeError)
+		}
+	}
+
 	if "" == pageName {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Name the page: ")
 		pageName, _ = reader.ReadString('\n')
 		if "" == pageName {
-			createIndex(pageName)
+			createPage(pageName)
 			return
 		}
 	}
@@ -153,11 +234,16 @@ func createPage(pageName string) {
 
 // Make makes things.
 func Make() {
+	api := flag.Bool("api", false, "")
 	index := flag.Bool("index", false, "")
 	guard := flag.Bool("guard", false, "")
 	page := flag.Bool("page", false, "")
 	name := flag.String("name", "", "")
 	flag.Parse()
+
+	if *api {
+		createApi(*name)
+	}
 
 	if *index {
 		createIndex(*name)

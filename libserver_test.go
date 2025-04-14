@@ -159,11 +159,15 @@ func TestServerWithApi(test *testing.T) {
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
 	expected := "hello"
-	ServerWithApi(server, "GET /",
-		func(request *Request, response *Response) {
+	ServerWithApi(server, func(
+		route RouteApiFunction,
+		serve ServeApiFunction,
+	) {
+		route("GET /")
+		serve(func(_ *Request, response *Response) {
 			SendEcho(response, expected)
-		},
-	)
+		})
+	})
 	go ServerStart(server)
 	defer ServerStop(server)
 
@@ -186,12 +190,16 @@ func TestSendStatus(test *testing.T) {
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
-	ServerWithApi(server, "GET /",
-		func(request *Request, response *Response) {
+	ServerWithApi(server, func(
+		route RouteApiFunction,
+		serve ServeApiFunction,
+	) {
+		route("GET /")
+		serve(func(_ *Request, response *Response) {
 			SendStatus(response, expected)
 			SendEcho(response, "Ok")
-		},
-	)
+		})
+	})
 	go ServerStart(server)
 	defer ServerStop(server)
 
@@ -217,12 +225,16 @@ func TestSendHeader(test *testing.T) {
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
 	expected := "application/json"
-	ServerWithApi(server, "GET /",
-		func(request *Request, response *Response) {
+	ServerWithApi(server, func(
+		route RouteApiFunction,
+		serve ServeApiFunction,
+	) {
+		route("GET /")
+		serve(func(_ *Request, response *Response) {
 			SendHeader(response, "Content-Type", expected)
 			SendEcho(response, "{}")
-		},
-	)
+		})
+	})
 	go ServerStart(server)
 	defer ServerStop(server)
 

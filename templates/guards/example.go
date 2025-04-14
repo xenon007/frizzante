@@ -7,7 +7,7 @@ func GuardApi(_ *frz.Request, _ *frz.Response, pass func()) {
 	pass()
 }
 
-func GuardPages(_ *frz.Request, _ *frz.Response, p *frz.Page, pass func()) {
+func GuardPages(_ *frz.Request, _ *frz.Response, _ *frz.Page, pass func()) {
 	// Guard.
 	pass()
 }

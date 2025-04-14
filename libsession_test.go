@@ -12,21 +12,30 @@ func TestSessionStart(test *testing.T) {
 	server := ServerCreate()
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
-	ServerWithApi(server, "GET /",
-		func(request *Request, response *Response) {
+	ServerWithApi(server, func(
+		route RouteApiFunction,
+		serve ServeApiFunction,
+	) {
+		route("GET /")
+		serve(func(request *Request, response *Response) {
 			get, _, _ := SessionStart(request, response)
 			name := get("name", "world").(string)
 			SendEcho(response, fmt.Sprintf("hello %s", name))
-		},
-	)
-	ServerWithApi(server, "POST /",
-		func(request *Request, response *Response) {
+		})
+	})
+	ServerWithApi(server, func(
+		route RouteApiFunction,
+		serve ServeApiFunction,
+	) {
+		route("POST /")
+		serve(func(request *Request, response *Response) {
 			_, set, _ := SessionStart(request, response)
 			name := ReceiveMessage(request)
 			set("name", name)
 			SendEcho(response, "")
-		},
-	)
+		})
+	})
+
 	go ServerStart(server)
 	defer ServerStop(server)
 
