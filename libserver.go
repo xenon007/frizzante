@@ -22,9 +22,6 @@ import (
 	"time"
 )
 
-type PageFunction = func(req *Request, res *Response, p *Page)
-type ApiFunction = func(req *Request, res *Response)
-
 type Server struct {
 	hostName               string
 	port                   int
@@ -453,8 +450,8 @@ func ReceiveContentType(self *Request) string {
 }
 
 func notFoundApi(
-	route RouteApiFunction,
-	serve ServeApiFunction,
+	route func(pattern string),
+	serve func(serveFunction func(req *Request, res *Response)),
 ) {
 	route("GET /")
 	serve(func(req *Request, res *Response) {
@@ -573,7 +570,7 @@ func routeCreate(
 // However, it is safe to invoke receive functions, like ReceiveHeader, ReceiveCookie, etc.
 func routeCreateWithPage(
 	page string,
-	callback PageFunction,
+	callback func(req *Request, res *Response, p *Page),
 ) *Route {
 	var pattern string
 
@@ -1348,12 +1345,9 @@ func ServerWithSessionOperator(
 	self.sessionOperator = sessionOperator
 }
 
-type RouteApiFunction = func(pattern string)
-type ServeApiFunction = func(apiFunction ApiFunction)
-
 type Api = func(
 	route func(pattern string),
-	serve func(apiFunction ApiFunction),
+	serve func(serveFunction func(req *Request, res *Response)),
 )
 
 // ServerWithApi adds an api.
@@ -1362,13 +1356,13 @@ func ServerWithApi(
 	api Api,
 ) {
 	var patterns []string
-	var serve ApiFunction
+	var serve func(req *Request, res *Response)
 
 	api(
 		func(pattern string) {
 			patterns = append(patterns, pattern)
 		},
-		func(serveFunction ApiFunction) {
+		func(serveFunction func(req *Request, res *Response)) {
 			serve = serveFunction
 		},
 	)
@@ -1396,15 +1390,10 @@ func ServerWithApiGuard(self *Server, guard ApiGuardFunction) {
 	self.apiGuards = append(self.apiGuards, guard)
 }
 
-type WireFunction = func()
-type LoadFunction = func(wire WireFunction)
-type RoutePageFunction = func(path string, page string)
-type ShowPageFunction = func(showFunction PageFunction)
-type ActionPageFunction = func(actionFunction PageFunction)
 type Index = func(
-	route RoutePageFunction,
-	show ShowPageFunction,
-	action ActionPageFunction,
+	route func(path string, page string),
+	show func(showFunction func(req *Request, res *Response, p *Page)),
+	action func(actionFunction func(req *Request, res *Response, p *Page)),
 )
 
 // ServerWithIndex adds an index.
@@ -1414,18 +1403,18 @@ func ServerWithIndex(
 ) {
 	indexPage := ""
 	indexPath := ""
-	var show PageFunction
-	var action PageFunction
+	var show func(req *Request, res *Response, p *Page)
+	var action func(req *Request, res *Response, p *Page)
 
 	index(
 		func(path string, page string) {
 			indexPath = path
 			indexPage = page
 		},
-		func(showFunction PageFunction) {
+		func(showFunction func(req *Request, res *Response, p *Page)) {
 			show = showFunction
 		},
-		func(actionFunction PageFunction) {
+		func(actionFunction func(req *Request, res *Response, p *Page)) {
 			action = actionFunction
 		},
 	)

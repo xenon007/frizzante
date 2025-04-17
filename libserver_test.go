@@ -160,8 +160,8 @@ func TestServerWithApi(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	expected := "hello"
 	ServerWithApi(server, func(
-		route RouteApiFunction,
-		serve ServeApiFunction,
+		route func(pattern string),
+		serve func(serveFunction func(req *Request, res *Response)),
 	) {
 		route("GET /")
 		serve(func(_ *Request, response *Response) {
@@ -191,8 +191,8 @@ func TestSendStatus(test *testing.T) {
 	ServerWithPort(server, port)
 	ServerWithNotifier(server, notifier)
 	ServerWithApi(server, func(
-		route RouteApiFunction,
-		serve ServeApiFunction,
+		route func(pattern string),
+		serve func(serveFunction func(req *Request, res *Response)),
 	) {
 		route("GET /")
 		serve(func(_ *Request, response *Response) {
@@ -226,8 +226,8 @@ func TestSendHeader(test *testing.T) {
 	ServerWithNotifier(server, notifier)
 	expected := "application/json"
 	ServerWithApi(server, func(
-		route RouteApiFunction,
-		serve ServeApiFunction,
+		route func(pattern string),
+		serve func(serveFunction func(req *Request, res *Response)),
 	) {
 		route("GET /")
 		serve(func(_ *Request, response *Response) {

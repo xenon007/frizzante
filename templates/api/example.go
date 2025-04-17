@@ -7,8 +7,8 @@ func serveFunction(_ *f.Request, _ *f.Response) {
 }
 
 func Api(
-	route f.RouteApiFunction,
-	serve f.ServeApiFunction,
+	route func(pattern string),
+	serve func(serveFunction func(req *f.Request, res *f.Response)),
 ) {
 	route("GET /")
 	serve(serveFunction)

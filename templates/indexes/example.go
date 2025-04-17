@@ -11,9 +11,9 @@ func indexActionFunction(_ *f.Request, _ *f.Response, _ *f.Page) {
 }
 
 func Index(
-	route f.RoutePageFunction,
-	show f.ShowPageFunction,
-	action f.ActionPageFunction,
+	route func(path string, page string),
+	show func(showFunction func(req *f.Request, res *f.Response, p *f.Page)),
+	action func(actionFunction func(req *f.Request, res *f.Response, p *f.Page)),
 ) {
 	route("/path", "page")
 	show(indexShowFunction)

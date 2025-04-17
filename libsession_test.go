@@ -13,8 +13,8 @@ func TestSessionStart(test *testing.T) {
 	port := NextNumber(8080)
 	ServerWithPort(server, port)
 	ServerWithApi(server, func(
-		route RouteApiFunction,
-		serve ServeApiFunction,
+		route func(pattern string),
+		serve func(serveFunction func(req *Request, res *Response)),
 	) {
 		route("GET /")
 		serve(func(request *Request, response *Response) {
@@ -24,8 +24,8 @@ func TestSessionStart(test *testing.T) {
 		})
 	})
 	ServerWithApi(server, func(
-		route RouteApiFunction,
-		serve ServeApiFunction,
+		route func(pattern string),
+		serve func(serveFunction func(req *Request, res *Response)),
 	) {
 		route("POST /")
 		serve(func(request *Request, response *Response) {

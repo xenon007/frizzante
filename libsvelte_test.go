@@ -17,8 +17,8 @@ func TestRenderServer(test *testing.T) {
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
 	ServerWithIndex(server, func(
 		route func(path string, page string),
-		show func(showFunction PageFunction),
-		action func(actionFunction PageFunction),
+		show func(showFunction func(req *Request, res *Response, p *Page)),
+		action func(actionFunction func(req *Request, res *Response, o *Page)),
 	) {
 		route("/", "welcome")
 		show(func(req *Request, res *Response, p *Page) {
@@ -52,8 +52,8 @@ func TestRenderClient(test *testing.T) {
 	ServerWithEmbeddedFileSystem(server, embeddedFileSystem)
 	ServerWithIndex(server, func(
 		route func(path string, page string),
-		show func(showFunction PageFunction),
-		action func(actionFunction PageFunction),
+		show func(showFunction func(req *Request, res *Response, p *Page)),
+		action func(actionFunction func(req *Request, res *Response, o *Page)),
 	) {
 		route("/", "welcome")
 		show(func(req *Request, res *Response, p *Page) {
