@@ -372,7 +372,8 @@ func ReceiveMessage(self *Request) string {
 	return string(readBytes)
 }
 
-// ReceiveJson reads the message as json and stores the result into value.
+// ReceiveJson reads the message as json and returns the value and a boolean,
+// which indicates success or failure.
 //
 // Compatible with web sockets.
 func ReceiveJson[T any](self *Request) (*T, bool) {
@@ -863,7 +864,13 @@ func SendCookie(self *Response, key string, value string) {
 //
 // Compatible with web sockets.
 func SendContent(self *Response, content []byte) {
+	isEvent := "" != self.eventName
 	if !self.lockedStatusAndHeader {
+		if isEvent && 1 == self.eventId {
+			SendHeader(self, "Cache-Control", "no-store")
+			SendHeader(self, "Content-Type", "text/event-stream")
+			SendHeader(self, "Connection", "keep-alive")
+		}
 		(*self.writer).WriteHeader(self.statusCode)
 		self.lockedStatusAndHeader = true
 	}
@@ -873,6 +880,11 @@ func SendContent(self *Response, content []byte) {
 		if writeError != nil {
 			NotifierSendError(self.server.notifier, writeError)
 		}
+		return
+	}
+
+	if isEvent {
+		sendEventContent(self, content)
 		return
 	}
 
@@ -1282,6 +1294,17 @@ func createReaderFromFileName(fileName string) (*bytes.Reader, *os.FileInfo, err
 		return nil, nil, closeError
 	}
 	return bytes.NewReader(buffer), &fileInfo, nil
+}
+
+// SendServerSentEventsUpgrade upgrades the http connection to server sent events.
+func SendServerSentEventsUpgrade(
+	self *Response,
+	callback func(event func(eventName string)),
+) {
+	self.eventName = "message"
+	callback(func(eventName string) {
+		self.eventName = eventName
+	})
 }
 
 // SendWebSocketUpgrade upgrades the http connection to web socket.

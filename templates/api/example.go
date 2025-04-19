@@ -1,4 +1,4 @@
-package indexes
+package api
 
 import f "github.com/razshare/frizzante"
 
